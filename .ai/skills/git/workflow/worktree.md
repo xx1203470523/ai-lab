@@ -25,17 +25,15 @@
 
 ### 命名与创建规范 (Naming & Creation)
 
-- 根据需求内容创建工作区和分支，命名规范严格参考 `../../rules/git/branch.rules.md`
+- 读取 `./rules/branch.rules.md`，遵守分支命名规范
+- 读取 `./rules/worktree-create.rules.md`，遵守创建规范
 - 禁止创建与已有工作区同名的分支
-
-### 规则加载 (Rules)
-
-- 执行此操作前，必须加载并严格遵守 `../../rules/git/worktree-create.rules.md`
 
 ## 3. 删除工作区 (Remove)
 
 ### 安全拦截规则 (Safety Guards)
 
+- 读取 `./rules/worktree-remove.rules.md`
 - 检查当前是否处于 worktree 内，若是，需先切换回主工作目录
 - 检查目标工作区是否存在未提交的代码改动，若有则拦截并提示用户处理
 - 检查目标工作区的分支是否已合并到主分支，若未合并则拦截
@@ -44,10 +42,6 @@
 
 - 必须向用户展示拦截检查结果，并获得用户的明确二次确认
 - 用户确认后，执行 `git worktree remove <path>`
-
-### 规则加载 (Rules)
-
-- 执行此操作前，必须加载并严格遵守 `../../rules/git/worktree-remove.rules.md`
 
 ## 补充
 

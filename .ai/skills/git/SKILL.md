@@ -5,16 +5,9 @@ description: git相关命令。
 
 # Git
 
-支持能力：
+## 路由规则
 
-- push
-- worktree
+根据用户意图，**先阅读对应的执行流程文件**，规则文件由流程在对应步骤按需加载：
 
-# Workflow
-
-- push -> `./workflow/push.md`
-- worktree -> `./workflow/worktree.md`
-
-# Rules
-
-- 始终遵守`../../rules/git/`
+- **Push**（推送 / push / 提交推送 / 上传代码）→ 阅读并遵守 `./workflow/push.md`
+- **Worktree**（工作区 / worktree）→ 阅读并遵守 `./workflow/worktree.md`

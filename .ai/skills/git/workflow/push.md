@@ -5,13 +5,13 @@
 ### 环境与分支校验
 
 1. 检查当前仓库工作区是否处于 worktree，如果不在，需要用户确认
-2. 检查当前分支规范，必须符合 `../../rules/git/push.rules.md`
+2. 读取 `./rules/push.rules.md`，检查当前分支是否符合推送规范
 3. 检查是否落后远程（main / production / 远端分支），若有冲突需先处理
 
 ### 提交内容校验
 
-- 检查提交内容规范，必须符合 `../../rules/git/commit.rules.md`
-- 若有自定义规范，参考 `../../reference/commit/custom.md`
+- 读取 `./rules/commit.rules.md`，检查提交内容是否符合规范
+- 若有自定义规范，读取 `./reference/commit/custom.md`
 
 ## 2. 执行推送 (Execute)
 
