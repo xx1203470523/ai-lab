@@ -1,13 +1,54 @@
-# Worktree
+# Git Worktree 自动化管理
 
-创建 worktree 时：
+## 1. 进入 / 列表工作区 (Enter / List)
 
-必须：
+### 执行逻辑
 
-- worktree 与分支同名
-- 使用 feature/\* 命名
+1. 用户输入分支或工作区名称
+2. 根据当前工作目录，查找对应工作区
+   1. 存在：直接进入该工作区，等待新命令
+   2. 不存在：提示用户未找到，等待进一步指令
+3. 若用户请求列表，执行 `git worktree list` 并格式化输出
 
-禁止：
+## 2. 新增工作区 (Create)
 
-- 在 main 创建 worktree
-- 删除未 merge 的 worktree
+### 执行逻辑
+
+1. 用户输入业务需求
+2. 根据内容创建工作区和分支
+3. 切换工作目录到工作区
+4. 提示用户是否进行继续开发任务
+
+### 执行前校验 (Pre-checks)
+
+- 检查主工作目录是否在 `main` 或 `production` 分支上，不在则拒绝创建并提示用户
+
+### 命名与创建规范 (Naming & Creation)
+
+- 根据需求内容创建工作区和分支，命名规范严格参考 `../../rules/git/branch.rules.md`
+- 禁止创建与已有工作区同名的分支
+
+### 规则加载 (Rules)
+
+- 执行此操作前，必须加载并严格遵守 `../../rules/git/worktree-create.rules.md`
+
+## 3. 删除工作区 (Remove)
+
+### 安全拦截规则 (Safety Guards)
+
+- 检查当前是否处于 worktree 内，若是，需先切换回主工作目录
+- 检查目标工作区是否存在未提交的代码改动，若有则拦截并提示用户处理
+- 检查目标工作区的分支是否已合并到主分支，若未合并则拦截
+
+### 用户确认与执行 (Confirmation & Execute)
+
+- 必须向用户展示拦截检查结果，并获得用户的明确二次确认
+- 用户确认后，执行 `git worktree remove <path>`
+
+### 规则加载 (Rules)
+
+- 执行此操作前，必须加载并严格遵守 `../../rules/git/worktree-remove.rules.md`
+
+## 补充
+
+- 工作区命名隔断符号`-`,分支命名隔断符号`/`

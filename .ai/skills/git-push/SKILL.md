@@ -1,117 +1,82 @@
 ---
 name: git-push
-description: 当用户输入 "/git-push" 或说"推送"、"提交并推送"、"git push"、"commit and push"时触发。自动检查分支、同步远端、分析改动生成 Conventional Commits 提交信息、暂存提交推送。
+description: "推送当前代码变更到远程仓库。自动基于main创建规范分支、生成提交备注、提交并推送。触发关键词：推送、push、提交推送、commit and push、推送代码、提交代码、上传代码"
+shell: powershell
+version: 1.0.0
 ---
 
-# Git Push 自动化
+## Trigger
 
-## 固定路径
+用户要求推送代码、提交并推送变更到远程仓库时触发。
 
-- 项目配置：`~/.claude/skills/git-push/reference/custom.md`
-- 默认主分支：`master`
+## Workflow
 
-## 前置
+### Step 1: 检查前置条件
 
-1. 读取 `reference/custom.md` 获取用户信息和提交规范偏好。未配置的字段回退到 `git config`。
-2. 确认当前目录是 git 仓库根目录。
+- [ ] 当前在 git 仓库中
+- [ ] 有未提交的变更（`git status` 有 modified 或 untracked 文件）
+- [ ] 远程仓库 `origin` 可访问
+- [ ] 当前不在 main/master/production/staging 分支上直接操作（如在这些分支上，先提醒用户确认）
 
-## 执行步骤
+### Step 2: 变基检查
 
-### 1. 分支检查
-
-```bash
-git branch --show-current
-```
-
-- 当前在 `master`/`main` → 提示"正在主分支上直接提交"，要求用户确认。取消则退出。
-- 当前在 feature 分支 → 直接继续。
-
-### 2. 远端同步
-
-```bash
-git fetch origin
-```
-
-**feature 分支**：
-```bash
-# 先检查本地 master 是否落后
-git rev-list --count master..origin/master
-```
-- 落后 > 0 → `git checkout master && git pull && git checkout -` 更新本地 master
-```bash
-# 再检查 feature 是否落后 origin/master
-git rev-list --count HEAD..origin/master
-```
-- 落后 > 0 → 提示"当前分支落后 origin/master X 个提交，是否 rebase？"
-  - 确认 → `git rebase origin/master`
-  - 冲突 → 列出冲突文件，停止，等用户处理
-  - 取消 → 跳过（提醒有合并冲突风险）
-
-**master 分支**（用户已确认）：
-```bash
-git pull --rebase origin master
-```
-
-### 3. 分析改动
-
-```bash
-git status --porcelain
-git diff --staged --stat
-git diff --stat
-```
-
-根据改动内容和 `custom.md` 中的规范生成 Conventional Commits 格式的 commit message：
+提交前检查是否在基于远端最新的main/production
+如果有更新组需要变基
 
 ```
-<type>(<scope>): <中文简述>
-
-<详细说明>
-- python: 改动项1
-- web: 改动项2
-- 无归属子项目的改动则不加前缀
+git checkout -b {branch-name}      # 从当前位置创建新分支（保留未提交改动）
+git fetch origin main
+git rebase origin/main             # 变基到最新 main
 ```
 
-每条 `- ` 行前缀用子项目名（python/web/webapi/docs/config），无归属则空着。
+### Step 3: 提交
 
-展示改动文件清单 + 生成的 message，用户确认/修改。
+**范围控制**：仅提交当前对话任务涉及的代码变更。工作区中与当前任务无关的改动不纳入本次提交。
 
-### 4. 暂存 + 提交
+#### 4. 编写提交信息并提交
 
-展示改动文件清单，用户确认范围后暂存：
+**标题格式**：`type(scope): 中文简短总结`
 
-```bash
-git add <file1> <file2> ...    # 按确认范围
-# 或用户明确"全部"时：
-git add -A
+**正文格式**：使用结构化 Markdown 章节，保持中文、简洁、可追溯：
+
+## Summary
+
+- 改动概述及原因
+
+## Changed Files
+
+- `path/to/file` - 相关改动说明
+
+- `## Summary` 必填，其余章节按需添加
+- 小改动可只保留 `## Summary`
+- 不要声称运行了实际未执行的验证步骤
+
+**提交备注尾部禁止添加 Claude 共同作者签名**：不要在提交信息末尾追加任何 Co-Authored-By 行，包括 Claude Opus 4.7 的 noreply 签名。
+
+**提交命令禁止使用 here-string 写法**：不要使用带 at 符号包裹的多行提交信息写法；示例和实际命令都必须避免该符号。
+
+### Step 5: 推送
+
+```
+git push -u origin {branch-name}
 ```
 
-```bash
-git commit -m "..."
-```
+推送成功后报告：分支名、提交 hash、推送结果、MR 链接。
 
-提交失败则报告错误并停止。
+#### 生成 MR 链接
 
-### 5. 推送
+- 运行 `glab mr list --source-branch {branch-name} --output json` 检查是否已有 MR。
+- 若已有 MR，直接输出现有 MR 链接（格式：`https://<host>/<project>/-/merge_requests/<iid>`）。
+- 若尚无 MR，输出创建 MR 的链接：`https://<host>/<project>/-/merge_requests/new?merge_request[source_branch]={branch-name}&merge_request[target_branch]=main`
+- `<host>` 和 `<project>` 从 `glab repo view --output json` 的 `web_url` 字段提取。
+- MR 链接单独一行、醒目展示，方便直接点击操作。
 
-```bash
-git push origin <branch>
-```
+## Forbidden
 
-| 结果 | 处理 |
-|------|------|
-| 成功 | ✅ 显示 commit hash 和推送结果 |
-| 远端有新提交 | ⚠️ 提示先 rebase origin/master 再推送 |
-| 权限/认证失败 | ⚠️ 提示检查凭据 |
-| 其他错误 | ⚠️ 报告原始错误，等待用户决策 |
-
-### 6. 完成
-
-推送成功后结束。不切回 master，不额外拉取。
-
-## 安全规则
-
-- master 分支提交必须确认
-- rebase 冲突必须停止，不做自动合并
-- 任何 git 命令失败不继续下一步
-- 不执行 `--force` push，除非用户明确要求
-- 提交信息不添加 `Co-Authored-By:` 行
+- 不要在 main/master/production/staging 分支上直接提交
+- 不要一次推送多个不相关任务的改动，每次推送仅对应一个任务/主题
+- 不要提交当前任务范围外的代码变更
+- 不要使用 `git add -A` / `git add .`
+- 不要使用 `--force` 推送
+- 不要跳过 git hooks（`--no-verify`、`--no-gpg-sign`）
+- 不要提交包含 secrets/credentials 的文件
