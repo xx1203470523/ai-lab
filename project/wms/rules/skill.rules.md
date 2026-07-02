@@ -1,7 +1,3 @@
----
-description: "个人 Skill 体系的最小默认规则。细则按条件读取 rules/packs/skill-*.rules.md。"
----
-
 # Skill Rules
 
 ## 定位

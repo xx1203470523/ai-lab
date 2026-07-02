@@ -1,6 +1,6 @@
 # Git Commit 规范
 
-## 提交信息格式
+## 提交信息格式 （默认）
 
 ```
 <type>(<scope>): <中文简述>
@@ -12,6 +12,10 @@
 - scope = 项目子目录名
 - type + scope: 英文
 - 简述: 中文
+
+## 项目特定提交样式 （优先）
+
+**WMS项目规范** 按照`../reference/commit/custom.md`
 
 ## 提交内容
 

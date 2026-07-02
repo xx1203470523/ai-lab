@@ -7,7 +7,7 @@
 ```json
 "statusLine": {
     "type": "command",
-    "command": "powershell -NoProfile -File C:/Users/liyanpeng/.claude/statusline.ps1",
+    "command": "powershell -NoProfile -File ~/.claude/statusline.ps1",
     "refreshInterval": 5
 }
 ```
@@ -20,6 +20,8 @@
 
 ## 效果
 
-状态栏显示格式：`<目录名> [<模型名>] <分支名>`
+状态栏显示格式：`<Git仓库名[/相对路径]> [<模型名>] <分支名>`
 
-例如：`ai-lab [deepseek-v4-pro] chore/prompt-engineering-convergence`
+- 在仓库根目录时：`ai-lab [deepseek-v4-pro] master`
+- 在子目录时：`ai-lab/src/components [deepseek-v4-pro] feature/xxx`
+- 非 Git 目录时降级为叶子目录名显示

@@ -1,0 +1,20 @@
+{
+  "target": "~/.claude/skills",
+  "sources": {
+    "core": {
+      "path": ".ai/skills",
+      "description": "通用技能（跨项目复用）",
+      "always": true
+    },
+    "wms": {
+      "path": "project/wms/skills",
+      "description": "WMS 项目技能",
+      "always": false
+    },
+    "trade": {
+      "path": "project/trade/skills",
+      "description": "炒股项目技能",
+      "always": false
+    }
+  }
+}
