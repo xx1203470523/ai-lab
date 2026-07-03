@@ -6,7 +6,7 @@
 ## 1. Start Gate
 
 - 写操作前确认工作目录 + 分支状态
-- 详见 `../rules/start-gate.rules.md`
+- 详见 `../rules/business/start-gate.rules.md`
 - 只读分析/stage 评估阶段不强求 gate
 
 ## 2. Scope Boundaries

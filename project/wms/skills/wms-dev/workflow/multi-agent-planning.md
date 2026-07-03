@@ -33,7 +33,9 @@ Complex 任务的分批、分派、执行序列。
 - 任务目标：[一句话]
 - 终端 Skill：wms-backend-dev / wms-frontend-dev / wms-pda-dev
 - Domain Context：[entity / repository / service / controller]
-- 当前工作目录：[项目根目录，不创建 worktree]
+- 当前工作目录：[项目根目录，已在用户 worktree 中，不创建额外隔离]
+- 禁止使用 Agent 工具创建子 Agent——你已经是分派出来的实现 Agent，不需要再向下委托
+- 禁止使用 isolation: "worktree"——用户已为你准备好工作环境，所有文件修改直接在当前目录进行
 
 ### Prerequisite Context（由协调器提供，不重复读取）
 - 已加载的 Base Rules 摘要：[3-5 行关键约束]

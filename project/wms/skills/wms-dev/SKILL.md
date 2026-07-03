@@ -38,7 +38,7 @@ version: 4.0.0
 写操作前检查：
 - 当前工作目录是否为 WMS 项目根目录
 - 分支是否基于最新 main
-- 详见 `@../rules/start-gate.rules.md`
+- 详见 `@../rules/business/start-gate.rules.md`
 
 ### Step 2: 路由到终端技能
 
