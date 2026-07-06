@@ -31,6 +31,7 @@ version: 1.0.0
 | 场景 | 读取 Pack |
 |---|---|
 | DTO 入参/出参/查询条件/API 返回结构变化 | `./rules/packs/service-dto.rules.md` |
+| 报表新增/优化、分页查询、导出、MiniExcel、大数据量查询、查询防刷 | `./rules/packs/service-report.rules.md`；必要时读取 `./workflows/report-optimize.md` |
 | 事务边界、多 Repository 写入、异常闭环 | `./rules/packs/service-transaction.rules.md` |
 | 状态流、库存、标签、质检、T100、立库、远程调用 | `./rules/packs/service-risk.rules.md` |
 | Repository 查询、Where、分页、软删除、原生 SQL、参数化、IN 条件、数据范围 | `./rules/packs/repository-query.rules.md` |

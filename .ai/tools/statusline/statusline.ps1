@@ -23,7 +23,7 @@ $sep    = "${e}[38;5;243m · ${e}[0m"
 $model  = "${e}[38;5;249m${model}${e}[0m"
 
 if ($branch) {
-    if ($branch -eq 'master' -or $branch -eq 'production') {
+    if ($branch -eq 'master' -or $branch -eq 'production' -or $branch -eq 'main') {
         $branchColor = "${e}[38;5;203m${branch}${e}[0m"
     } else {
         $branchColor = "${e}[38;5;120m${branch}${e}[0m"
