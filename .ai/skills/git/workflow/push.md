@@ -36,6 +36,7 @@ git rebase origin/main
 ### 提交信息
 
 按 `./rules/commit.rules.md` 格式编写。有项目自定义规范时优先使用。
+提交信息尾部禁止含 `Co-Authored-By:` 和 `🤖 Generated with` 行。
 
 ## 4. 推送 (Push)
 
@@ -52,6 +53,12 @@ git push -u origin {branch-name}
 - 若尚无 MR，输出创建链接：`https://<host>/<project>/-/merge_requests/new?merge_request[source_branch]={branch-name}&merge_request[target_branch]=main`
 - `<host>` 和 `<project>` 从 `glab repo view --output json` 的 `web_url` 提取
 - MR 链接单独一行、醒目展示
+
+### MR 描述
+
+MR 描述正文尾部禁止含以下行：
+- `Co-Authored-By: Claude <noreply@anthropic.com>`
+- `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 
 ## 3. 异常处理 (Error Handling)
 

@@ -17,6 +17,11 @@
 
 **WMS项目规范** 按照`../reference/commit/custom.md`
 
+## 提交尾部禁止事项
+
+- 禁止在提交信息末尾追加 Co-Authored-By 行
+- 禁止使用 here-string 写法传递多行提交信息
+
 ## 提交内容
 
 - 非本轮改动代码文件提交前需要确认，例如(_.cs/_.vue等)，文件日志改动则忽略(_.md/_.sql)

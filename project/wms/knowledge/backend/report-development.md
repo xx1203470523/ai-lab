@@ -1,23 +1,22 @@
 # WMS 报表开发参考
 
-> 最后更新: 2026-07-07
+> 最后更新: 2026-07-09
 > 来源：入库综合报表多轮性能优化实战
 
 ---
 
-## 一、规范（必须遵守）
+## 一、规范
 
 ### 1.1 查询门禁
 
 - **必须**有时间或其他高选择性条件兜底，禁止无条件全表分页/导出。
-- 推荐默认近一个月 `CreateOn` 范围，时间跨度不超过一个月。
 - 查询条件不足时，后端直接抛业务异常提示用户补充条件。
 
 ### 1.2 导出数量限制
 
 - **必须**先 `CountAsync` 判断总数，符合阈值再 `ToList`。
 - **禁止**使用 `pageSize=100000` 等 hack 方式限制导出数量。
-- 阈值建议 100000，抛出明确提示引导用户缩小查询范围。
+- 阈值建议 100000，超出抛出明确提示引导用户缩小查询范围。
 
 ### 1.3 禁止事项
 
@@ -26,133 +25,176 @@
 - 匿名类型 `new { }` 改为具名私有类承接
 - 禁止报表 Service 引入新外部依赖
 
-### 1.4 导出排序
+### 1.4 排序
 
-- 导出路径**不加** `ORDER BY`，大数据量排序开销大，且导出无需排序。
+- 分页和导出**均不加** `ORDER BY`。雪花 ID 主键 + 聚簇索引自然有序，避免排序开销。
 
-### 1.5 分页默认排序
-
-- `ORDER BY Id DESC`（雪花主键自带时间排序，聚簇索引反向扫描零成本）。
-- 导出不加排序。
-
-### 1.6 列标签
+### 1.5 列标签
 
 - 人员字段必须区分工号和名称：`提交人工号` / `提交人名称`。
 - 禁止工号和名称共用同一个 label。
 
-### 1.7 注释
+### 1.6 注释
 
 - 禁止 `@author`、`@date` 等作者信息。
 - `/// <summary>` 保持一行，不写实现细节。
 
-### 1.8 Build 验证
+### 1.7 Build 验证
 
 - `dotnet build <project> /p:WarningLevel=0` — 抑制全量警告，仅看错误。
 - 错误必须清零，警告不阻塞。
 
 ---
 
-## 二、路由与命名规范
+## 二、核心优化模式
 
-### 2.1 路由
+### 2.1 默认时间范围兜底
 
-- 查询：`report/{domain}/{entity}/{report-type}`
-- 导出：`report/{domain}/{entity}/{report-type}/export`
+无时间条件时自动补全默认范围 + 跨度上限。`ValidateQueryScope` 中完成，Service 入口统一调用。
+
+| 数据量级 | 默认时间 | 最大跨度 |
+|---------|---------|---------|
+| 千万级（标签表） | 近一周 | 一个月 |
+| 百万级（明细表） | 近一个月 | 一个月 |
+| 十万级以下 | 近一个月 | 三个月 |
+
+### 2.2 分页与导出查询分离
+
+分页和导出使用**独立查询构建器**，各自优化目标不同。
+
+| 维度 | 分页 | 导出 |
+|------|------|------|
+| **目标** | 快，一页 20-50 条 | 全量准确，内存可控 |
+| **JOIN 策略** | 最小 JOIN（2-3 表） | 完整 JOIN（5-8 表） |
+| **跨表筛选** | EXISTS 子查询 | EXISTS 子查询 |
+| **字段获取** | 核心字段 + 分页后按 ID 后填充 | JOIN SELECT 一次性拿全，跳过冗余后填充 |
+| **排序** | 不加 OrderBy | 不加 OrderBy |
+| **COUNT** | 核心表 COUNT | 核心表 COUNT（不是导出 JOIN COUNT） |
+
+关键约束：
+- 分页和导出**禁止**共用同一个查询构建器方法
+- 导出**禁止**通过修改 `PageSize` 伪装成分页查询
+
+### 2.3 EXISTS 替代预查 ID + IN
+
+**问题**：先查 ID 列表再 `WHERE Id IN (40w)`，ID 上万后 MySQL 优化器弃索引走全表扫。
+
+**方案**：用 `SqlFunc.Subqueryable<T>().Where(...).Any()` 内联 EXISTS，每个条件独立推入数据库。
+
+```csharp
+// ❌ 预查 ID + IN
+query.WhereIF(ctx.QueryReceiptIds.Any(), a => ctx.QueryReceiptIds.Contains(a.Id));
+
+// ✅ EXISTS 内联
+query.Where(a => SqlFunc.Subqueryable<QualChecklistDetail>()
+    .Where(cd => cd.ReceiptId == a.Id && cd.CheckNo!.StartsWith(parm.CheckNo))
+    .Any());
+```
+
+| 维度 | 预查 ID + IN | EXISTS 子查询 |
+|------|-------------|--------------|
+| DB 往返 | N 次（每个条件一次） | 0 次 |
+| 索引利用 | ID 上万后优化器弃索引 | 优化器正常走索引 |
+| 可维护性 | 预查和主查询分离，逻辑割裂 | 条件内聚在 BuildQuery 中 |
+
+保留预查询的场景：字典数据、用户 UserName/NickName（结果 < 100）。
+
+### 2.4 大数据 COUNT 优化
+
+导出 COUNT 使用**核心表最小查询**（与分页查询相同的表集合），不跑完整导出 JOIN。
+
+```csharp
+// ❌ 导出 COUNT 跑全量 JOIN
+var total = await BuildExportQuery(queryDto).CountAsync();  // 120 秒
+
+// ✅ COUNT 跑核心表
+var total = await BuildPagedQuery(queryDto).CountAsync();    // < 1 秒
+```
+
+注意事项：
+- COUNT 用分页查询构建器，不是导出查询构建器
+- GROUP BY 聚合的导出 COUNT 需单独处理去重逻辑
+- 建立 `ExportMaxRows` 常量（建议 100000）
+
+---
+
+## 三、路由与命名规范
+
+### 3.1 路由
+
+- **控制器级**：`[Route("report/{domain}")]`，提供业务域前缀，如 `report/instock`
+- **动作级**：`{entity}[/{subtype}]`，表达具体业务，如 `receipt/order`、`label`
+- 导出：动作路由 + `/export`
+- 动作级路由**禁止**重复控制器基路由已有的路径段
 
 示例：
-- `report/instock/receipt/order` — 入库收货单综合报表
-- `report/instock/receipt/order/export` — 导出
+- 控制器 `[Route("report/instock")]`，动作 `[HttpGet("receipt/order")]` → `report/instock/receipt/order`
+- 控制器 `[Route("report/instock")]`，动作 `[HttpGet("label")]` → `report/instock/label`
+- 导出在动作路由后追加 `/export`
 
-### 2.2 命名
+### 3.2 命名
 
 - Service 方法：`Get{Domain}{Entity}{Type}ReportListAsync` / `Export{Domain}{Entity}{Type}ReportAsync`
 - DTO：`{Domain}{Entity}{Type}ReportDto` / `QueryDto` / `ExportDto`
 - 前端 API：`get{Domain}{Entity}{Type}ReportList` / `export{Domain}{Entity}{Type}Report`
-- `{Type}` 由具体业务命名（如 Receipt、Detail、Label）
 
 ---
 
-## 三、查询策略（按场景选择）
-
-### 3.1 策略对比
+## 四、查询策略
 
 | 策略 | 分页 | 导出 | 适用 |
 |------|------|------|------|
-| **A. 单表 + 后填充** | 主表单表 WHERE → 分页 → 按 ID 后填充 | — | 主表 < 50w，分页行数少 |
-| **B. JOIN + 后填充** | — | 4 表 JOIN → COUNT → ToList → 后填充 | 导出需全量数据 |
+| **A. 单表 + 后填充** | 主表单表 WHERE → 分页 → 按 ID 后填充 | — | 主表 < 50w |
+| **B. JOIN + 后填充** | — | 4+ 表 JOIN → COUNT（核心表）→ ToList → 后填充 | 导出全量 |
 | **C. 统一 JOIN** | 分页和导出都 JOIN | 分页和导出都 JOIN | 主表 < 10w，关联简单 |
 
-### 3.2 选择依据
-
-- 主表 > 50w 且有 1:N 关联 → 策略 A+B（分页单表 + 导出 JOIN）
-- 主表 < 10w 且关联简单 → 策略 C（统一 JOIN）
+选择依据：
+- 主表 > 50w 且有 1:N 关联 → 策略 A+B
+- 主表 < 10w 且关联简单 → 策略 C
 - 标签级报表（千万级）→ 必须策略 A+B
-- 无论如何，分页和导出**共享**后填充方法，只改主查询结构
-
-### 3.3 EXISTS vs 预查询 IN
-
-**规范**：跨表筛选条件优先使用 `EXISTS` 子查询，**禁止**预查 ID + 大 IN 列表。
-
-| 场景 | 做法 | 原因 |
-|------|------|------|
-| 上架状态/时间筛选 | `WHERE EXISTS(SELECT 1 FROM up_shelves WHERE ReceiptHeadId=h.Id AND ...)` | 避免预查 40w ID |
-| 收货人筛选 | `WHERE EXISTS(SELECT 1 FROM printcenter WHERE SourceHeadId=h.Id AND UpdateBy IN (...))` | 同上 |
-| 质检单号筛选 | `WHERE EXISTS(SELECT 1 FROM qualchecklistdetail WHERE ReceiptId=h.Id AND ...)` | 同上 |
-| T100 单号筛选 | `WHERE EXISTS(detail WHERE SourceNo=?) OR EXISTS(arn_head WHERE Source=?)` | 同上 |
-| 供应商/状态/日期（主表字段） | 直接 `WHERE h.SupplierName LIKE ...` | 主表字段无需子查询 |
-
-**保留预查询的场景**（数据量小、可并行）：
-- 字典数据（BusinessType 等）
-- 人员 UserName/NickName 查询（走 sys_user 索引，结果通常 < 100）
+- 分页和导出**共享后填充方法**，只改主查询结构
 
 ---
 
-## 四、后置填充性能模式
+## 五、后置填充
 
-### 4.1 ILookup 替代 List.Where（**必须**）
+### 5.1 ILookup 替代 List.Where（必须）
 
 ```csharp
-// ❌ O(n×m)：每行循环内全量扫描
+// ❌ O(n×m)
 var details = detailList.Where(d => d.HeadId == item.Id).ToList();
-
-// ✅ O(1)：预建 Lookup，循环内索引取值
+// ✅ O(1)
 var lookup = detailList.ToLookup(d => d.HeadId);
 var details = lookup[item.Id].ToList();
 ```
 
-`RelatedData` 中用 `ILookup<long, T>` 承接明细/质检/标签，`FillDtoRows` 中走索引器。
+### 5.2 导出跳过冗余加载
 
-### 4.2 导出跳过冗余数据加载
-
-导出路径主查询已 JOIN 获取的字段，后填充**不再重复查询**：
+导出主查询已 JOIN 的字段不再重复查询：
 
 | 数据 | 分页 | 导出 | 原因 |
 |------|:--:|:--:|------|
 | ArnHead/AsnHead/QualChecklist | ✅ | ❌ | 导出 SELECT 已有 |
-| 收货明细 | ✅ | ❌ | 导出走 JOIN+GROUP BY 聚合 |
+| 收货明细 | ✅ | ❌ | 导出 JOIN+GROUP BY 聚合 |
 | 标签 | ✅ | ❌ | 大 IN 列表跳过 |
-| 上架单 | ✅ | ✅ | 导出仍需填充上架字段 |
-| 质检明细 | ✅ | ✅ | 导出仍需填充质检字段 |
-| 用户字典 | ✅ | ✅ | 导出仍需昵称转换 |
+| 上架单 | ✅ | ✅ | 导出仍需 |
+| 质检明细 | ✅ | ✅ | 导出仍需 |
+| 用户字典 | ✅ | ✅ | 导出仍需 |
 
-### 4.3 明细聚合：JOIN + GROUP BY 替代关联子查询
+### 5.3 明细聚合
 
-导出路径明细数据（COUNT/SUM）用 `INNER JOIN receipt_head + GROUP BY ReceiptHeadId` 单次查询，**禁止**在 SELECT 中写 10w×4 次 `SqlFunc.Subqueryable` 关联子查询。
+导出明细聚合用 `JOIN + GROUP BY` 单次查询，禁止 SELECT 中写 N×4 次关联子查询。
 
 ---
 
-## 五、内存控制
+## 六、内存参考
 
-- 导出路径 `LoadRelatedDataAsync` 传入 `skipDetailQuery: true`，跳过 ArnHead/AsnHead/QualChecklist 三张大字典加载（导出 SELECT 已有）。
-- 标签查询同样受 `skipDetailQuery` 控制，避免 1000w 表 `WHERE IN(10w)` 全表扫。
-- 上架后填充保留（数据量相对可控，且导出需要上架字段）。
-
-### 预期内存（10w 行导出）
+10w 行导出预期：
 
 | 组件 | 旧 | 新 |
 |------|:--:|:--:|
 | 主查询结果 | ~300MB | ~300MB |
-| ArnHead/AsnHead/QualChecklist 字典 | ~500MB | 0 |
+| ArnHead/AsnHead/QualChecklist | ~500MB | 0 |
 | 标签查询 | ~500MB | 0 |
 | 明细聚合 | ~100MB | ~100MB |
 | UpShelves + 用户 | ~200MB | ~200MB |
@@ -160,14 +202,14 @@ var details = lookup[item.Id].ToList();
 
 ---
 
-## 六、反模式（禁止）
+## 七、反模式
 
 | 反模式 | 为什么不行 |
 |--------|-----------|
 | 预查 ID + `WHERE Id IN (40w)` | MySQL 优化器弃索引走全表扫 |
-| 分批次 IN 查询替代大 IN | 网络往返抵消、MySQL 仍需解析多个 IN |
+| 分页和导出共用查询构建器 | 分页为 20 条跑了 8 表 JOIN |
+| 导出 COUNT 用全量 JOIN | COUNT 只需筛选条件，全 JOIN 浪费 100 倍时间 |
 | `pageSize=100000` 做导出 | 语义混乱、内存不可控 |
-| 导出 `ORDER BY Id DESC` | 大结果集排序无意义且开销大 |
-| SELECT 中 4 个关联子查询 × N 行 | N×4 次子查询，10w 行=40w 次 |
+| SELECT 中 N×4 关联子查询 | 10w 行 = 40w 次子查询 |
 | `List.Where()` 在循环内 | O(n×m) 线性退化 |
 | 导出复用分页方法 | 入口语义不清、后填充策略不可控 |

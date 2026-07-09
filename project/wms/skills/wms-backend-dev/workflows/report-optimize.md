@@ -1,6 +1,6 @@
 # Report Optimize Workflow
 
-本 workflow 用于 WMS 后端报表新增、优化、重构前评估和受控落地。流程只负责步骤与状态，不承载最终强约束；强约束以 `rules/packs/service-report.rules.md` 及命中的 Service / Repository / DTO / Controller 规则包为准。
+本 workflow 用于 WMS 后端报表新增、优化、重构前评估和受控落地。流程只负责步骤与状态，不承载最终强约束；强约束以 `rules/packs/service-report.rules.md` 为准，实践参考见 `report-development.md` 第二节"核心优化模式"。
 
 ## 1. Trigger
 
@@ -46,10 +46,14 @@
 - 查询主体：主表、明细表、标签表、维表、字典表、用户表。
 - DTO 结构：QueryDto、PagedQueryDto、Dto、ExportDto 是否分离。
 - 查询条件：是否允许默认无条件查询，是否有弱条件，是否有时间范围。
+- **默认时间兜底**：无时间条件时是否有默认范围，是否有最大跨度限制。
 - 字符串匹配：是否存在全模糊或不适合索引的条件。
 - Id 预查：是否存在先查 Id 再 Contains，命中表是否适合小结果集策略。
-- 分页形态：是否直接 `ToPageAsync`，是否有 count 上限和稳定排序。
+- **预查 ID + IN**：是否存在大结果集 `CollectIds → Contains(ids)` 模式，是否可改为 EXISTS。
+- 分页形态：是否直接 `ToPageAsync`，是否有 count 上限，是否加了不必要的 OrderBy。
+- **分页/导出分离**：分页和导出是否使用独立查询构建器，分页是否最小 JOIN。
 - 导出形态：是否先 count，是否全量 `ToListAsync`，是否后置判断上限，是否 MiniExcel。
+- **导出 COUNT**：COUNT 是否在核心表执行还是对全量 JOIN 执行。
 - 字段填充：是否只按当前页 / 当前批次补充，是否存在全量补充风险。
 - 并发限制：是否有用户级导出锁或查询防刷。
 
@@ -71,7 +75,7 @@
 - 全量导出或压力测试。
 - 会长时间锁表或影响业务的验证。
 
-数据库分析结果必须说明 SQL 条件、limit、结果数量和风险；没有执行数据库分析时写明“未做数据库验证”。
+数据库分析结果必须说明 SQL 条件、limit、结果数量和风险；没有执行数据库分析时写明"未做数据库验证"。
 
 ## 6. Design Options
 
@@ -80,14 +84,15 @@
 ### 保守方案
 
 - 保持 API 和 DTO 契约不变。
-- 增加查询条件保护、导出 count 限制、导出锁或局部查询优化。
+- 增加默认时间范围兜底、查询条件保护、导出 count 限制、导出锁或局部查询优化。
 - 适合快速降低风险。
 
 ### 中等改造方案
 
-- 拆分主查询、分页查询、列表查询、导出查询。
+- 拆分分页查询和导出查询为独立构建器（`BuildPagedQuery` / `BuildExportQuery`）。
+- 分页用最小 JOIN + EXISTS 子查询；导出用完整 JOIN 让 DB 优化。
 - 分离 QueryDto / PagedQueryDto / ExportDto，但不改变对外字段含义。
-- 显式 count 与分页，避免 `ToPageAsync` 失去保护点。
+- 导出 COUNT 改为核心表查询。
 
 ### 高风险重构方案
 
@@ -114,13 +119,14 @@ Task Contract 不明确时进入 Blocked。
 推荐顺序：
 
 1. 提取或整理基础查询方法。
-2. 增加查询条件校验。
-3. 分离或明确分页查询与列表查询。
-4. 增加 count / 上限 / 稳定排序。
-5. 优化 Id 预查或替换为 Join / Subquery 方案。
-6. 调整导出入口，使用 MiniExcel 和 ExportDto。
-7. 增加导出锁或查询防刷。
-8. 只在确认后调整字段语义、导出列或 API 契约。
+2. 分离分页查询构建器与导出查询构建器（`BuildPagedQuery` / `BuildExportQuery`）。
+3. 增加查询条件校验（含默认时间范围兜底）。
+4. 增加 count / 上限保护。
+5. 将预查 ID + IN 改为 EXISTS 子查询（参考 `report-development.md` 2.3 节）。
+6. 导出 COUNT 改为核心表查询（参考 `report-development.md` 2.4 节）。
+7. 调整导出入口，使用 MiniExcel 和 ExportDto。
+8. 增加导出锁或查询防刷。
+9. 只在确认后调整字段语义、导出列或 API 契约。
 
 禁止把字段语义修正、DTO 契约变化、入口切换和性能优化混在一个未确认批次里。
 
