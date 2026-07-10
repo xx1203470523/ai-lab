@@ -1,13 +1,29 @@
 ---
 name: wms-dev
-description: "WMS 开发唯一入口：根据任务复杂度路由到 wms-backend-dev / wms-frontend-dev / wms-pda-dev 终端技能，复杂任务按 P0/P1/P2 拆分并编排多 Agent 协作。"
+description: "WMS 开发协调入口：负责任务分析、复杂度判断、终端 Skill 路由、复杂任务编排。具体代码实现由 wms-backend-dev / wms-frontend-dev / wms-pda-dev 执行。"
 shell: powershell
-version: 4.0.0
+version: 1.0.0
 ---
 
 # WMS Dev — 开发协调器
 
-必须遵守：@./rules/dev.rules.md
+## Responsibility
+
+负责：
+
+- WMS 开发任务入口
+- 任务复杂度判断
+- 终端 Skill 路由
+- Complex 任务拆分
+- Agent 编排协调
+- 执行结果汇总
+
+不负责：
+
+- 具体业务代码实现
+- 后端/前端/PDA技术规范定义
+- 业务规则定义
+- 代码模板维护
 
 ## Trigger
 
@@ -15,114 +31,95 @@ version: 4.0.0
 - 跨端联动或跨层联动
 - 用户未指定终端技能，需要协调器分析并路由
 
-## 执行流程
+## Workflow
 
-### Step 0: 复杂度评估
+执行流程：
 
-先读取 `./workflow/complexity-decision.md` 判断任务复杂度。
+### Complexity Decision（任务复杂度分析）
 
-**Simple** — 满足全部：
-- ≤ 2 文件 + 单层 + 无契约影响 + 无跨端影响 + 无风险标志
+读取：
 
-→ 协调器直接处理，调用对应终端技能 inline，不启 Agent。
-→ Mini Task Contract（In Scope / Out of Scope / Verify）。
-→ 加载：终端 SKILL.md + 目标 Base Rules + 命中的 Condition Pack。
+`./workflow/complexity-decision.md`
 
-**Complex** — 任一命中：
-- > 2 文件 / 多层 / 契约变化 / 跨端 / 事务库存T100立库 / 新功能
+判断：
 
-→ 读 `./workflow/multi-agent-planning.md`，按 P0/P1/P2 拆批，Agent 编排。
+- Simple
+- Complex
 
-### Step 1: Start Gate
+### Complex Planning（复杂任务编排）
 
-写操作前检查：
-- 当前工作目录是否为 WMS 项目根目录
-- 分支是否基于最新 main
-- 详见 `@../rules/business/start-gate.rules.md`
+Complex 任务读取：
 
-### Step 2: 路由到终端技能
+`./workflow/multi-agent-planning.md`
 
-| 影响端 | 终端 Skill | 项目路径 |
-|--------|-----------|----------|
-| 后端 .NET C# | `wms-backend-dev` | `IMTC.WMS.AdminWebApi/` |
-| 前端 AdminUI | `wms-frontend-dev` | `IMTC.WMS.AdminUI/` |
-| PDA 手持端 | `wms-pda-dev` | `IMTC.WMS.PDA/` |
+负责：
 
-- Simple 任务只路由一个终端
-- Complex 跨端任务：识别涉及终端，逐个拆批
+- Agent 拆分
+- 执行顺序
+- 依赖关系
 
-### Step 3: P0/P1/P2 分批（仅 Complex）
+## Skill Routing
 
-| 批次 | 后端 | 策略 |
-|------|------|------|
-| P0 | Entity + Repository | 数据结构先行 |
-| P1 | Service + DTO | 业务逻辑居中 |
-| P2 | Controller + API | 对外接口收尾 |
+| 影响端       | 终端 Skill         | 项目路径                |
+| ------------ | ------------------ | ----------------------- |
+| 后端 .NET C# | `wms-backend-dev`  | `IMTC.WMS.AdminWebApi/` |
+| 前端 AdminUI | `wms-frontend-dev` | `IMTC.WMS.AdminUI/`     |
+| PDA 手持端   | `wms-pda-dev`      | `IMTC.WMS.PDA/`         |
 
-- P0 验证通过 → 启 P1 → P1 验证通过 → 启 P2
-- 每批一个 Agent，不并行
-- 前端/PDA 的批次粒度由对应终端技能内部定义（目前骨架，后续补充）
+## Rule Loading
 
-### Step 4: Agent 分派
+终端 Skill 负责加载具体 Rules。
 
-见 `./workflow/multi-agent-planning.md`。Agent 必须接收：
+wms-dev 只负责传递：
 
-- Task Contract（In Scope / Out of Scope / Verify）
-- 终端 Skill 名
-- Base Rules 绝对路径
-- 命中 Condition Packs 绝对路径
-- 允许/禁止读写路径
-- 启动指令：先 Read Rules 再实现，未命中 Pack 不读，范围扩大先回报
+- 目标 Skill
+- 任务范围
+- 影响范围
+- Workflow上下文
 
-**约束**：
-- 不创建 worktree，所有 Agent 在同一工作目录操作
-- Agent 严格顺序执行，不并行
-- Verification Agent 独立运行，只读不改
+禁止：
+
+- 在本 Skill 内复制 Rules 内容
+- 自行维护业务规则
+
+## Agent
+
+Agent 任务协议：
+
+`../../protocols/agent-task-packet.md`
+
+Agent 执行协议：
+
+`../../protocols/agent-context.md`
+
+Agent 拆分：
+
+`./workflow/multi-agent-planning.md`
 
 ## Task Status
 
-- `Pending` → `Running` → `Verifying` → `Done`
+- `Pending`：待开始
+- `Running`：执行中
+- `Verifying`：验证中
+- `Done`：完成
 - `Blocked`：阻塞原因 + 需确认内容 + 建议下一步
 
-## Output Format
+## Boundary
 
-### Lightweight（Simple）
+本 Skill：
 
-```markdown
-## WMS Dev（Lightweight）
-- 状态 / 目标 / Terminal Skill / Mini Task Contract / 验证
-```
+负责：
 
-### Full（Complex）
+- 分析
+- 路由
+- 编排
+- 汇总
 
-```markdown
-## WMS Dev 任务状态
-- 当前状态 / 目标 / Start Gate / 当前批次
+本 Skill 不负责：
 
-## 复杂度评估
-- 文件数 / 层数 / 契约影响 / 跨端影响 / 风险 / 结论
-
-## P0/P1/P2 分批计划
-| 批次 | 终端 | Domain | 文件 | Agent |
-
-## Task Contract
-- 本次批次 / In Scope / Out of Scope / 禁止路径
-
-## Agent 编排
-| 批次 | Agent | 状态 | 结果 |
-
-## 验证与清理
-- Verification Agent / 已验证 / 残余风险
-
-## 后续候选
-- 不在本次处理的候选项
-
-## Blocked 信息
-- 阻塞原因 / 建议下一步
-```
-
-## Boundaries
-
-- 不直接实现代码，不复制终端 Skill 内部规则正文
-- 不复制 `/wms-start-gate`、`/git` 等独立技能流程
-- 协调器只负责分析、路由、编排、验证——实现交给终端 Skill + Agent
+- 后端代码实现
+- 前端代码实现
+- PDA代码实现
+- Git流程
+- 数据库规范
+- 业务规范

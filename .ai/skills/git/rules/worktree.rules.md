@@ -4,7 +4,7 @@
 
 - 工作区目录统一放在项目根目录下的 `.claude/worktree/` 中
 - 工作区命名隔断符 `-`，分支命名隔断符 `/`
-- 基于最新 main（main/production）分支创建
+- 基于远端最新 main（main/production）分支创建
 - 禁止创建与已有工作区同名的分支
 
 ## 删除规范

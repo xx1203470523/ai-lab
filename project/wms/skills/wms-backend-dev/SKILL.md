@@ -7,65 +7,113 @@ version: 1.0.0
 
 # WMS Backend Dev — 后端终端 Skill
 
-必须遵守：@./rules/entity.rules.md（以实际任务 Domain 为准）
+## Responsibility
+
+负责：
+
+- WMS 后端代码修改
+- Entity 实体维护
+- Repository 数据访问
+- Service 业务编排
+- Controller API实现
+- 后端 Rules 执行
+
+不负责：
+
+- 前端实现
+- PDA实现
+- Agent任务拆分
+- Git流程
+- 数据库规范定义
+- 业务规则设计
 
 ## Trigger
 
-- wms-dev 协调器路由后端任务到本 skill
-- 用户直接指定后端开发：`/wms-backend-dev`
-- 涉及 `IMTC.WMS.AdminWebApi/` 的代码变更
+进入本 Skill：
 
-## Domain Routing
+- wms-dev 路由后端任务
+- 用户指定 `/wms-backend-dev`
+- 修改范围包含 `IMTC.WMS.AdminWebApi/`
 
-| 影响层 | Context | Base Rules（先加载） |
-|---|---|---|
-| Entity — 实体字段、SqlSugar 特性、可空性、索引 | `wms-entity` | `./rules/entity.rules.md` |
-| Repository — 查询、SQL、持久化、仓储结构 | `wms-repository` | `./rules/repository.rules.md` |
-| Service — 编排、DTO、事务、调用链 | `wms-service` | `./rules/service.rules.md` |
-| Controller — 路由、API、鉴权、契约 | `wms-controller` | `./rules/controller.rules.md` |
+## Domain Rules
 
-## Conditional Rule Packs
+根据修改层加载对应 Base Rules。
 
-仅加载命中场景的 Pack，未命中不得默认读取。
+| Domain     | Base Rule                                      |
+| ---------- | ---------------------------------------------- |
+| Entity     | `../rules/wms-backend-dev/entity.rules.md`     |
+| Repository | `../rules/wms-backend-dev/repository.rules.md` |
+| Service    | `../rules/wms-backend-dev/service.rules.md`    |
+| Controller | `../rules/wms-backend-dev/controller.rules.md` |
 
-| 场景 | 读取 Pack |
-|---|---|
-| DTO 入参/出参/查询条件/API 返回结构变化 | `./rules/packs/service-dto.rules.md` |
-| 报表新增/优化、分页查询、导出、MiniExcel、大数据量查询、查询防刷 | `./rules/packs/service-report.rules.md`；必要时读取 `./workflows/report-optimize.md` |
-| 事务边界、多 Repository 写入、异常闭环 | `./rules/packs/service-transaction.rules.md` |
-| 状态流、库存、标签、质检、T100、立库、远程调用 | `./rules/packs/service-risk.rules.md` |
-| Repository 查询、Where、分页、软删除、原生 SQL、参数化、IN 条件、数据范围 | `./rules/packs/repository-query.rules.md` |
-| Repository 插入、更新、删除、批量写入 | `./rules/packs/repository-write.rules.md` |
-| Entity 字段、SugarColumn、nullable、长度、精度、枚举、索引、唯一约束 | `./rules/packs/entity-field.rules.md` |
-| 新增实体时补 Repository 基础结构 | `./rules/packs/entity-repository-base.rules.md` |
-| Controller 路由、HTTP 动作、鉴权、权限码、菜单 | `./rules/packs/controller-setup.rules.md` |
-| API 契约、参数绑定、返回结构、Web/PDA/外部系统影响 | `./rules/packs/controller-contract.rules.md` |
+## Condition Packs
+
+仅命中场景读取。
+
+| 场景                       | Pack                                                    |
+| -------------------------- | ------------------------------------------------------- |
+| DTO/API契约变化            | `../rules/wms-backend-dev/service-dto.rules.md`         |
+| 报表/分页/导出             | `../rules/wms-backend-dev/service-report.rules.md`      |
+| 事务/多Repository写入      | `../rules/wms-backend-dev/service-transaction.rules.md` |
+| 库存/标签/质检/T100/状态流 | `../rules/wms-backend-dev/service-risk.rules.md`        |
+| Repository查询优化         | `../rules/wms-backend-dev/epository-query.rules.md`     |
+| Repository写入             | `../rules/wms-backend-dev/repository-write.rules.md`    |
+| Entity字段约束             | `../rules/wms-backend-dev/entity-field.rules.md`        |
+| Controller接口             | `../rules/wms-backend-dev/controller-setup.rules.md`    |
+| API消费者影响              | `../rules/wms-backend-dev/controller-contract.rules.md` |
 
 ## Loading Strategy
 
-### 简单任务（复用协调器判断）
+### Simple Task
 
-- 加载：本 SKILL.md + 目标 Domain Base Rules
-- 命中特定场景才读对应 Condition Pack
-- 不扫描未命中 Pack
+执行：
 
-### 复杂任务（协调器拆批后）
+1. 读取本 Skill
+2. 读取影响层 Base Rules
+3. 读取命中 Condition Packs
+4. 实现任务
 
-- 协调器在 Agent Task Packet 中指定 Base Rules + 命中 Packs 绝对路径
-- Agent 按启动指令逐文件读取，不自行扩展
+### Agent Task
 
-## Boundaries
+由 Coordinator 提供：
 
-- 本 skill 的 rules/ 目录由协调器管理。每次任务只读取协调器指定的文件路径，不自行扫描 rules/ 目录
-- 不为了"了解上下文"而读取未指定的 Pack
-- 只读写 `IMTC.WMS.AdminWebApi/`
-- 禁止读取或修改 `IMTC.WMS.AdminUI/`（前端）和 `IMTC.WMS.PDA/`（PDA）
-- DTO/API 契约变更可能影响 Web/PDA 时，只提示影响范围，不自行查看或修改对应端代码
-- 发现任务扩展至前端/PDA 时，停止并回报协调器
+- Task Scope
+- Rules Path
+- Allowed Path
+- Forbidden Path
+
+Agent 不主动：
+
+- 扫描全部 Rules
+- 扩大修改范围
+
+## Project Boundary
+
+允许修改：
+
+- `IMTC.WMS.AdminWebApi/`
+
+禁止修改：
+
+- `IMTC.WMS.AdminUI/`
+- `IMTC.WMS.PDA/`
+
+跨端影响：
+
+- 输出影响范围
+- 等待协调器重新分配
 
 ## Escalation
 
-任务范围在实现过程中扩大时：
-1. 停止当前实现
-2. 向协调器报告：原始范围 vs 实际发现的范围
-3. 等待协调器重新评估（可能升级到复杂模式、新增 P 批次或拆分终端）
+发现：
+
+- 需要修改其他端
+- 需要新增未定义规则
+- 业务范围扩大
+- API契约影响消费者
+
+必须：
+
+1. 停止扩展
+2. 输出影响范围
+3. 等待重新分配

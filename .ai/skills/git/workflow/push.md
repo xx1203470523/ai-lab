@@ -12,6 +12,7 @@
 
 ### 提交内容校验
 
+- 读取 `../reference/push/push.md`，推送前检查推送自定义规范
 - 读取 `./rules/commit.rules.md`，检查提交内容是否符合规范
 - 若有项目自定义规范，读取 `./reference/commit/custom.md`
 
@@ -57,6 +58,7 @@ git push -u origin {branch-name}
 ### MR 描述
 
 MR 描述正文尾部禁止含以下行：
+
 - `Co-Authored-By: Claude <noreply@anthropic.com>`
 - `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 

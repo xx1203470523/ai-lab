@@ -79,7 +79,7 @@ public class XxxReportExportDto
 /// </summary>
 public class XxxReportService : IXxxReportService, ITransient
 {
-    private const int ExportMaxRows = 500000;
+    private const int ExportMaxRows = 100000;
 
     private readonly XxxRepository _xxxRepository;
     private readonly ICachingService _cachingService;
@@ -101,17 +101,17 @@ public class XxxReportService : IXxxReportService, ITransient
         var query = queryDto.Adapt<XxxReportQueryDto>();
         ValidateQueryScope(query);
 
-        var baseQuery = BuildBaseQuery(query);
+        // 分页用最小 JOIN + EXISTS，不加 OrderBy
+        var baseQuery = BuildPagedQuery(query);
         var total = await baseQuery.CountAsync();
         if (total > ExportMaxRows)
         {
             throw new CustomException("查询结果过大，请增加查询条件后重试");
         }
 
-        var rows = await baseQuery
-            .OrderBy(x => x.BillNo)
-            .ToPageListAsync(queryDto.PageNum, queryDto.PageSize);
+        var rows = await baseQuery.ToPageListAsync(queryDto.PageNum, queryDto.PageSize);
 
+        // 按当前页 ID 后填充
         await FillPageDataAsync(rows);
 
         return new PagedInfo<XxxReportDto>
@@ -122,29 +122,6 @@ public class XxxReportService : IXxxReportService, ITransient
             PageSize = queryDto.PageSize,
             TotalPage = (int)Math.Ceiling(total / (double)queryDto.PageSize)
         };
-    }
-
-    /// <summary>
-    /// 查询XXX报表列表
-    /// </summary>
-    public async Task<List<XxxReportDto>> GetListAsync(XxxReportQueryDto queryDto, int maxRows)
-    {
-        ValidateQueryScope(queryDto);
-
-        var baseQuery = BuildBaseQuery(queryDto);
-        var total = await baseQuery.CountAsync();
-        if (total > maxRows)
-        {
-            throw new CustomException("查询结果过大，请增加查询条件后重试");
-        }
-
-        var rows = await baseQuery
-            .OrderBy(x => x.BillNo)
-            .Take(maxRows)
-            .ToListAsync();
-
-        await FillPageDataAsync(rows);
-        return rows;
     }
 
     /// <summary>
@@ -161,11 +138,26 @@ public class XxxReportService : IXxxReportService, ITransient
 
         try
         {
-            var rows = await GetListAsync(queryDto, ExportMaxRows);
-            if (rows.Count == 0)
+            ValidateQueryScope(queryDto);
+
+            // 导出 COUNT 用核心表（分页查询），不是导出 JOIN
+            var countQuery = BuildPagedQuery(queryDto);
+            var total = await countQuery.CountAsync();
+            if (total > ExportMaxRows)
+            {
+                throw new CustomException($"导出数据量超过{ExportMaxRows}条上限，请缩小查询范围");
+            }
+            if (total == 0)
             {
                 throw new CustomException("未查询到数据，请检查搜索条件");
             }
+
+            // 导出用完整 JOIN 拿全字段，不加 OrderBy
+            var exportQuery = BuildExportQuery(queryDto);
+            var rows = await exportQuery.ToListAsync();
+
+            // 导出后填充：跳过导出 SELECT 已有的表
+            await FillExportDataAsync(rows, skipDetailQuery: true);
 
             var exportRows = rows.Adapt<List<XxxReportExportDto>>();
             var filePath = HandleExcelHepler.GetFilePath("XXX报表", out var fileName);
@@ -179,55 +171,137 @@ public class XxxReportService : IXxxReportService, ITransient
     }
 
     /// <summary>
-    /// 构建XXX报表基础查询
+    /// 构建分页查询（最小 JOIN + EXISTS 子查询处理跨表条件，不加 OrderBy）
     /// </summary>
-    private ISugarQueryable<XxxReportDto> BuildBaseQuery(XxxReportQueryDto queryDto)
+    private ISugarQueryable<XxxReportDto> BuildPagedQuery(XxxReportQueryDto queryDto)
     {
-        return _xxxRepository.Queryable()
-            .WhereIF(!string.IsNullOrWhiteSpace(queryDto.BillNo), x => x.BillNo!.StartsWith(queryDto.BillNo))
-            .WhereIF(queryDto.StartTime.HasValue, x => x.CreateOn >= queryDto.StartTime)
-            .WhereIF(queryDto.EndTime.HasValue, x => x.CreateOn < queryDto.EndTime.Value.AddDays(1))
-            .Select(x => new XxxReportDto
-            {
-                BillNo = x.BillNo
-            });
+        // 核心表（2-3 表）
+        var query = _headRepository.Queryable()
+            .LeftJoin<InStockReceiptDetail>((h, d) => h.Id == d.ReceiptHeadId);
+
+        // 直接条件
+        query = query
+            .WhereIF(!string.IsNullOrWhiteSpace(queryDto.BillNo), h => h.BillNo!.StartsWith(queryDto.BillNo))
+            .WhereIF(queryDto.StartTime.HasValue, h => h.CreateOn >= queryDto.StartTime)
+            .WhereIF(queryDto.EndTime.HasValue, h => h.CreateOn < queryDto.EndTime.Value.AddDays(1));
+
+        // 跨表条件用 EXISTS
+        if (!string.IsNullOrWhiteSpace(queryDto.CheckNo))
+        {
+            query = query.Where(h => SqlFunc.Subqueryable<QualChecklistDetail>()
+                .Where(cd => cd.ReceiptId == h.Id && cd.CheckNo!.StartsWith(queryDto.CheckNo))
+                .Any());
+        }
+
+        return query.Select((h, d) => new XxxReportDto
+        {
+            BillNo = h.BillNo,
+            Id = h.Id,
+        });
     }
 
     /// <summary>
-    /// 校验XXX报表查询范围
+    /// 构建导出查询（完整 JOIN 拿全字段，不加 OrderBy）
+    /// </summary>
+    private ISugarQueryable<XxxReportDto> BuildExportQuery(XxxReportQueryDto queryDto)
+    {
+        var query = _headRepository.Queryable()
+            .LeftJoin<InStockArnHead>((a, b) => a.Id == b.ReceiptHeadId)
+            .LeftJoin<QualChecklist>((a, b, c) => a.Id == c.ReceiptId)
+            .LeftJoin<InStockAsnHead>((a, b, c, d) => b.AsnId == d.Id)
+            .LeftJoin<InStockReceiptDetail>((a, b, c, d, e) => a.Id == e.ReceiptHeadId);
+
+        // 直接条件（与分页查询同构）
+        query = query
+            .WhereIF(!string.IsNullOrWhiteSpace(queryDto.BillNo), a => a.BillNo!.StartsWith(queryDto.BillNo))
+            .WhereIF(queryDto.StartTime.HasValue, a => a.CreateOn >= queryDto.StartTime)
+            .WhereIF(queryDto.EndTime.HasValue, a => a.CreateOn < queryDto.EndTime.Value.AddDays(1));
+
+        // 跨表条件同样用 EXISTS
+        if (!string.IsNullOrWhiteSpace(queryDto.CheckNo))
+        {
+            query = query.Where(a => SqlFunc.Subqueryable<QualChecklistDetail>()
+                .Where(cd => cd.ReceiptId == a.Id && cd.CheckNo!.StartsWith(queryDto.CheckNo))
+                .Any());
+        }
+
+        // SELECT 一次性拿全，导出后填充跳过这些表
+        return query.Select((a, b, c, d, e) => new XxxReportDto
+        {
+            BillNo = a.BillNo,
+            Id = a.Id,
+            ArnNo = b.ArnNo,           // 导出 SELECT 已有 → FillExport 跳过
+            CheckNo = c.CheckNo,        // 导出 SELECT 已有 → FillExport 跳过
+            DetailCount = e.Count,      // 导出 SELECT 已有 → FillExport 跳过
+        });
+    }
+
+    /// <summary>
+    /// 校验查询范围（含默认时间范围兜底）
     /// </summary>
     private static void ValidateQueryScope(XxxReportQueryDto queryDto)
     {
-        var hasBillNo = !string.IsNullOrWhiteSpace(queryDto.BillNo);
-        var hasDateRange = queryDto.StartTime.HasValue && queryDto.EndTime.HasValue;
+        // 无结束时间 → 默认当日 23:59:59
+        var now = DateTime.Now;
+        var endTime = queryDto.EndTime ?? new DateTime(now.Year, now.Month, now.Day, 23, 59, 59);
+        // 无开始时间 → 默认一个月前
+        var startTime = queryDto.StartTime ?? endTime.AddMonths(-1).Date;
 
-        if (!hasBillNo && !hasDateRange)
-        {
+        // 跨度上限：不超过一个月
+        if (endTime.Date > startTime.Date.AddMonths(1))
+            throw new CustomException("查询时间范围不能超过一个月");
+
+        var hasBillNo = !string.IsNullOrWhiteSpace(queryDto.BillNo);
+        if (!hasBillNo && !queryDto.StartTime.HasValue && !queryDto.EndTime.HasValue)
             throw new CustomException("请至少输入单号或时间范围后查询");
+
+        queryDto.StartTime = startTime;
+        queryDto.EndTime = endTime;
+    }
+
+    /// <summary>
+    /// 填充当前页补充字段（基于当前页 ID 集合）
+    /// </summary>
+    private async Task FillPageDataAsync(List<XxxReportDto> rows)
+    {
+        if (rows.Count == 0) return;
+
+        var headIds = rows.Select(r => r.Id).Distinct().ToList();
+
+        // 按当前页 ID 查询关联数据，ILookup O(1) 索引取值
+        var details = await _detailRepository.Queryable()
+            .Where(d => headIds.Contains(d.ReceiptHeadId))
+            .ToListAsync();
+        var detailLookup = details.ToLookup(d => d.ReceiptHeadId);
+
+        foreach (var row in rows)
+        {
+            var rowDetails = detailLookup[row.Id].ToList();
+            row.DetailCount = rowDetails.Count;
         }
     }
 
     /// <summary>
-    /// 填充当前页补充字段
+    /// 填充导出补充字段（跳过导出 SELECT 已有的表）
     /// </summary>
-    private async Task FillPageDataAsync(List<XxxReportDto> rows)
+    private async Task FillExportDataAsync(List<XxxReportDto> rows, bool skipDetailQuery)
     {
-        if (rows.Count == 0)
-        {
-            return;
-        }
+        if (rows.Count == 0) return;
 
-        await Task.CompletedTask;
+        // 导出 SELECT 已有的表不再重复查询
+        // 只填充导出未 JOIN 的数据（如用户字典、上架字段等）
     }
 }
 ```
 
 ## 3. Pattern Notes
 
-- `BuildBaseQuery` 只负责共享查询主体，不处理分页、导出锁或文件生成。
-- `ValidateQueryScope` 负责阻断无条件或弱条件大范围查询。
-- 分页、列表和导出可以复用基础查询，但不要让导出通过修改 `PageSize` 伪装成分页查询。
-- Count 阶段用于提前保护数据库和内存；不要在全量 `ToListAsync` 后才判断数量。
-- 当前页补充字段只基于当前页 Id 查询。
-- 导出锁以用户维度为默认粒度，避免同一用户反复点击导出。
-- 如果 `ToPageListAsync` 在当前项目不可用，使用项目现有等价分页 API；替换前需确认 SqlSugar KB 或现有代码引用。
+- `BuildPagedQuery`：最小 JOIN（2-3 表），跨表条件用 EXISTS 子查询，不加 OrderBy。只 SELECT 后填充拿不到的字段。
+- `BuildExportQuery`：完整 JOIN（5-8 表），SELECT 一次性拿全让 DB 发挥 JOIN 性能，不加 OrderBy。后填充跳过已获取的表。
+- `ValidateQueryScope`：无时间条件时默认近一个月，最大跨度一个月，超限抛异常。
+- 分页和导出**禁止共用**同一个查询构建器。
+- 导出 COUNT 用 `BuildPagedQuery().CountAsync()`（核心表），不是 `BuildExportQuery().CountAsync()`（全 JOIN）。
+- COUNT 阶段用于提前保护数据库和内存；不要在全量 `ToListAsync` 后才判断数量。
+- 当前页补充字段只基于当前页 ID 集合查询，使用 ILookup 索引取值。
+- 导出锁以用户维度为默认粒度，`finally` 中释放，未取得锁不得释放。
+- 雪花 ID 主键 + 聚簇索引自然有序，不额外加排序增加开销。

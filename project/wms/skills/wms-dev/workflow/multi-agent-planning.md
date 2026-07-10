@@ -1,89 +1,110 @@
-# 多 Agent 编排
+# Multi Agent Planning Workflow
 
-Complex 任务的分批、分派、执行序列。
+用于 Complex 任务的拆分、调度和执行顺序。
 
-## P0/P1/P2 分批
+## 1. Trigger
 
-| 批次 | 后端范围 | Agent Domain | 策略 |
-|------|----------|-------------|------|
-| P0 | Entity + Repository | wms-entity, wms-repository | 数据层先行 |
-| P1 | Service + DTO | wms-service | 业务居中 |
-| P2 | Controller + API | wms-controller | 接口收尾 |
+仅 Complex 任务进入。
 
-- 每批完成 → 验证 → 通过后启下一批
-- P1 读取 P0 输出作为上下文
-- P2 读取 P0 + P1 输出作为上下文
-- 前端/PDA 的分批粒度由对应终端技能定义
+Complex 判断来源：
 
-## Context Passing (避免 Agent 重复读取)
+- `./complexity-decision.md`
 
-主会话协调器已将规则读入上下文。向 Agent 传递规则时按以下策略：
+## 2. Split Strategy
 
-- **短规则（≤50 行）**：在 Agent prompt 中内联关键约束摘要，Agent 不需要再读文件
-- **长规则（>50 行）**：在 Agent prompt 中提供绝对路径 + 关键摘要（3-5 行），Agent 只读指定文件
-- **禁止行为**：Agent 不得自行扫描 rules/ 目录、不得读取未在 prompt 中列出的 Pack、不得为了"了解上下文"而扩大读取范围
+根据任务范围选择拆分方式。
 
-## Agent Task Packet 模板
+### Single Domain
 
-分派 Agent 时，prompt 必须包含：
+单终端、单业务域：
 
-```markdown
-## Agent Task Packet
+示例：
 
-- 任务目标：[一句话]
-- 终端 Skill：wms-backend-dev / wms-frontend-dev / wms-pda-dev
-- Domain Context：[entity / repository / service / controller]
-- 当前工作目录：[项目根目录，已在用户 worktree 中，不创建额外隔离]
-- 禁止使用 Agent 工具创建子 Agent——你已经是分派出来的实现 Agent，不需要再向下委托
-- 禁止使用 isolation: "worktree"——用户已为你准备好工作环境，所有文件修改直接在当前目录进行
+- 后端单模块重构
+- 单页面调整
 
-### Prerequisite Context（由协调器提供，不重复读取）
-- 已加载的 Base Rules 摘要：[3-5 行关键约束]
-- 已命中的 Pack 摘要：[3-5 行关键约束]
+执行：
 
-### 规则（绝对路径）
-- Base Rules：E:\My\project\ai-lab\project\wms\skills\wms-backend-dev\rules\[domain].rules.md
-- 命中 Packs（仅这些，不要读其他）：
-  E:\My\project\ai-lab\project\wms\skills\wms-backend-dev\rules\packs\[pack].rules.md
+单 Agent。
 
-### 边界
-- 允许读取：[路径]
-- 允许修改：[路径]
-- 禁止读取/修改：IMTC.WMS.AdminUI/、IMTC.WMS.PDA/
+---
 
-### Task Contract
-- 批次：P0 / P1 / P2
-- In Scope：[明确范围]
-- Out of Scope：[明确排除]
-- 预计文件数：[N]
-- 停止条件：[触发回报的条件]
+### Multi Layer Backend
 
-### 启动指令
-1. 先 Read Base Rules 和命中 Packs，再开始实现
-2. 未命中的 packs 不要读取
-3. 发现任务范围扩大时先回报，不要自行扩展
-```
+后端跨层修改：
 
-## 执行序列
+默认拆分：
 
-```
-Coordinator: 评估 → Complex → P0/P1/P2 计划 → 用户确认
-    │
-    ├─► [P0 Agent] → [P0 Verification Agent]
-    │       P0 通过?
-    │
-    ├─► [P1 Agent]（读 P0 输出）→ [P1 Verification Agent]
-    │       P1 通过?
-    │
-    ├─► [P2 Agent]（读 P0+P1 输出）→ [P2 Verification Agent]
-    │       P2 通过?
-    │
-    └─► Coordinator 汇总 → Done / Blocked
-```
+| Batch | Domain              | Strategy |
+| ----- | ------------------- | -------- |
+| P0    | Entity + Repository | 数据结构 |
+| P1    | Service + DTO       | 业务逻辑 |
+| P2    | Controller + API    | 接口契约 |
 
-## 冲突避免
+执行规则：
 
-- 所有 Agent 严格顺序执行，不并行
-- 每批仅修改分配的路径
-- 后批次 Agent 发现前批次文件需修改 → 回报协调器，由协调器决定是修正还是重派
-- Verification Agent 只读不改
+- P0 完成并验证后进入 P1
+- P1 完成并验证后进入 P2
+
+---
+
+### Multi Terminal
+
+涉及多个终端：
+
+例如：
+
+- Backend + Frontend
+- Backend + PDA
+
+按终端拆分：
+
+| Agent          | Skill            |
+| -------------- | ---------------- |
+| Backend Agent  | wms-backend-dev  |
+| Frontend Agent | wms-frontend-dev |
+| PDA Agent      | wms-pda-dev      |
+
+执行：
+
+- 无文件依赖 → 可以并行
+- 有接口依赖 → 按依赖顺序执行
+
+## 3. Context Dependency
+
+Agent 之间存在依赖时：
+
+后续 Agent 可以读取前置 Agent 输出。
+
+示例：
+
+Entity Agent
+↓
+Repository Agent
+↓
+Service Agent
+↓
+Controller Agent
+
+跨终端：
+
+Backend API
+↓
+Frontend Consume
+
+## 4. Execution Rules
+
+- 每个 Agent 只负责分配范围
+- Agent 不主动扩大任务范围
+- 修改范围冲突时停止并回报
+- 验证通过后进入下一阶段
+- Verification Agent 只读，不修改代码
+
+## 5. Completion
+
+Coordinator 汇总：
+
+- 已完成 Agent
+- 验证结果
+- 未解决风险
+- 后续任务
