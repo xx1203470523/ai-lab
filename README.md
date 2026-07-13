@@ -1,335 +1,87 @@
 # AI-Lab
 
-统一管理个人 AI 工程化资产。
-
-目标：
-
-* 脱离 Claude Code、Codex 等具体工具
-* 脱离具体项目
-* 统一维护 Skill、Rule、Workflow、Knowledge
-* 支持多项目、多会话、多 Worktree 开发
-* 支持未来 Agent 化演进
+个人 AI 工程化资产库。通过真实 WMS 业务持续验证和迭代。
 
 ---
 
-## Design Principles
+## 目录结构
 
-### 1. AI-Lab 是资产中心
+```
+ai-lab/
+├── .ai/                   # 跨项目通用：Skill、Rules、Scripts、Protocols
+│   ├── skills/            #   git、skill-gen、task-plan、task-execute
+│   ├── rules/             #   git 等通用约束
+│   ├── protocols/         #   Agent Task Packet、Context 协议
+│   ├── scripts/           #   search-knowledge.ps1 等
+│   └── adapters/          #   工具适配（待建设）
+│
+├── project/               # 项目级资产（业务相关）
+│   └── wms/               #   WMS 项目的 Skills、Rules、Knowledge
+│       ├── skills/        #     wms-dev、wms-backend-dev、dbsql 等
+│       ├── rules/         #     wms-backend-dev 分层约束
+│       └── knowledge/     #     领域知识（report-development 等）
+│
+└── registry/              # 项目注册（待建设）
+```
 
-AI-Lab 管理：
+---
 
-* Rules
-* Skills
-* Workflows
-* Hooks
-* Templates
-* Bootstrap
-* Registry
+## 核心概念
 
-而不是管理项目代码。
+| 概念        | 职责                       | 示例                           |
+| ----------- | -------------------------- | ------------------------------ |
+| **Rules**   | 强制约束，决定"能不能做"   | 禁止全量 ToList、禁止全模糊查询 |
+| **Skills**  | 行为流程，决定"怎么做"     | wms-dev → 路由 → wms-backend-dev |
+| **Knowledge** | 实践经验，提供"参考方案" | report-development.md 优化模式  |
+| **Workflows** | 多步骤流程，编排步骤与状态 | report-optimize.md              |
+
+**Rules / Skills / Knowledge 三者独立，不互相替代。**
 
 ---
 
-### 2. 项目是消费者
+## 设计原则
 
-项目负责：
+### 1. 业务优先于工程化
 
-* 业务知识
-* 业务规则
-* 业务 Workflow
-* Agent Context
+WMS 功能开发优先。AI-Lab 优化来自实际痛点，不来自设计。
 
-AI-Lab 负责：
+连续遇到 3 次同样问题 → 记录 → 抽象。
 
-* 通用能力
-* 工程化能力
-* 自动化能力
+### 2. 项目资产归属项目
 
----
+```
+.ai/rules/git/          → 跨项目通用
+project/wms/rules/       → WMS 专属
+project/wms/knowledge/   → WMS 领域知识
+```
+
+禁止把业务规则塞进 `.ai/` 通用层。
 
 ### 3. Context First
 
-Agent 的核心目标：
+Agent 不是自动执行，而是隔离上下文、限制职责范围。
 
-不是自动执行。
-
-而是：
-
-* 隔离上下文
-* 限制职责范围
-* 提升输出质量
-
-当前阶段：
-
-```text
-Agent = Context Profile
+```
+Agent = Context Profile + Write Boundary
 ```
 
----
+### 4. 碎片化但不过度
 
-### 4. Tool Agnostic
+文件按职责拆分，一次任务只读 2-3 个相关文件：
 
-不绑定：
-
-* Claude Code
-* Codex
-* Gemini
-* OpenCode
-
-通过 Adapter 适配。
-
----
-
-## Directory Structure
-
-```text
-AI-Lab
-│
-├─ .ai
-│  │
-│  ├─ adapters
-│  ├─ bootstrap
-│  ├─ hooks
-│  ├─ journal
-│  ├─ rules
-│  ├─ skills
-│  ├─ templates
-│  └─ workflows
-│
-├─ registry
-│
-├─ projects
-│  │
-│  ├─ wms
-│  ├─ trade
-│  └─ voxcpm
-│
-└─ docs
+```
+Service:   {Name}Service`{Purpose}.cs`       // Query, Export, Confirm, Print
+DTO:       {Name}Dto`{Purpose}.cs`            // Query, Export, PagedQuery
 ```
 
----
+### 5. 先人工执行，后自动化
 
-## Responsibilities
-
-### .ai/adapters
-
-工具适配层。
-
-例如：
-
-```text
-claude
-codex
-gemini
-```
-
-负责：
-
-* 初始化
-* 配置生成
-* Hook 接入
-* Session 管理
+执行 ≥ 5 次且步骤稳定 → 考虑抽象为 Skill / Script。
 
 ---
 
-### .ai/bootstrap
-
-初始化脚本。
-
-例如：
-
-```text
-attach-project.ps1
-
-sync-project.ps1
-```
-
----
-
-### .ai/hooks
-
-Prompt 注入。
-
-关键词路由。
-
-知识自动加载。
-
----
-
-### .ai/rules
-
-通用规则。
-
-例如：
-
-```text
-coding-style
-
-git
-
-architecture
-
-communication
-```
-
----
-
-### .ai/skills
-
-通用 Skill。
-
-要求：
-
-* 自包含
-* 可跨项目复用
-* 不依赖业务知识
-
-例如：
-
-```text
-impact-analysis
-
-git-worktree
-
-code-review
-
-feature-development
-```
-
----
-
-### .ai/workflows
-
-通用工作流。
-
-例如：
-
-```text
-feature-development
-
-bug-fix
-
-refactor
-```
-
----
-
-### registry
-
-项目注册中心。
-
-负责：
-
-* 项目发现
-* 路径解析
-* Tool 配置
-
----
-
-### projects
-
-业务知识中心。
-
-例如：
-
-```text
-projects/wms
-```
-
-存放：
-
-```text
-knowledge
-skills
-rules
-workflows
-agents
-```
-
----
-
-## Worktree Policy
-
-Worktree 属于运行时状态。
-
-不属于知识资产。
-
-统一放置于工具目录。
-
-例如：
-
-```text
-.claude/worktree
-.codex/worktree
-.agent/worktree
-```
-
-AI-Lab 不直接管理 Worktree。
-
-AI-Lab 仅提供：
-
-```text
-git-worktree Skill
-```
-
----
-
-## Current Priorities
-
-P0
-
-* WMS Knowledge
-* wms-dev
-* git-worktree
-
-P1
-
-* Registry
-* Attach Project
-* Agent Context
-
-P2
-
-* Hook Routing
-* Knowledge Injection
-
-P3
-
-* Task Decomposition
-
-P4
-
-* Cross Project Validation
-
----
-
-## Long-Term Goal
-
-建立一套：
-
-* 可迁移
-* 可扩展
-* 可复用
-
-的个人 AI 工程化体系。
-
-通过真实业务持续验证。
-
-避免为了工程化而工程化。
-
----
-
-## AI-Lab 是什么？
-
-本质上：
-
-你
-而不是
-项目
-
-里面沉淀的是：
-
-你的思考方式
-你的开发方法论
-你的工作流
-你的知识体系
+## 当前重点
+
+- WMS 后端开发体系（wms-dev → wms-backend-dev + Rules + Knowledge）
+- 报表优化方法论（report-development.md + report-optimize workflow）
+- 知识沉淀（Knowledge Discovery → search-knowledge.ps1）
