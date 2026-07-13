@@ -22,7 +22,7 @@
    - 同一轮未检查过时运行；默认 Auto 会优先 `mysql` CLI，缺失时使用 Java + DBeaver MySQL JDBC 驱动：
 
    ```powershell
-   & "C:\Users\liyanpeng\.claude\skills\dbsql\scripts\dbsql-mysql.ps1" -Mode Check
+   & "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Check
    ```
 
    - 检查失败就停止，输出缺失项和一个下一步动作。
@@ -35,13 +35,13 @@
 4. **执行只读查询**
 
    ```powershell
-   & "C:\Users\liyanpeng\.claude\skills\dbsql\scripts\dbsql-mysql.ps1" -Mode Query -Sql '<SQL>'
+   & "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Query -Sql '<SQL>'
    ```
 
    或：
 
    ```powershell
-   & "C:\Users\liyanpeng\.claude\skills\dbsql\scripts\dbsql-mysql.ps1" -Mode File -SqlPath '<file.sql>'
+   & "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode File -SqlPath '<file.sql>'
    ```
 
 5. **输出结果**

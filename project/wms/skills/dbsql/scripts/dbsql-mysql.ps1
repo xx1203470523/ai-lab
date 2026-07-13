@@ -5,7 +5,7 @@
     [ValidateSet('Auto', 'Cli', 'Jdbc')]
     [string]$Driver = 'Auto',
 
-    [string]$EnvPath = 'C:\Users\liyanpeng\.claude\skills\dbsql\.env',
+    [string]$EnvPath = "$env:USERPROFILE\.claude\skills\dbsql\.env",
 
     [string]$Environment,
 

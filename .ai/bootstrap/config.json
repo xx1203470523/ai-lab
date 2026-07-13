@@ -1,19 +1,35 @@
 {
-  "target": "~/.claude/skills",
+  "targets": {
+    "skills": { "path": "~/.claude/skills", "itemType": "dir" },
+    "rules": { "path": "~/.claude/rules", "itemType": "dir" },
+    "knowledge": { "path": "~/.claude/knowledge", "itemType": "dir" },
+    "scripts": { "path": "~/.claude/scripts", "itemType": "file" },
+    "protocols": { "path": "~/.claude/protocols", "itemType": "dir" }
+  },
   "sources": {
     "core": {
-      "path": ".ai/skills",
-      "description": "通用技能（跨项目复用）",
+      "skills": ".ai/skills",
+      "rules": ".ai/rules",
+      "knowledge": ".ai/knowledge",
+      "scripts": ".ai/scripts",
+      "description": "通用技能/规则/知识库/脚本（跨项目复用）",
       "always": true
     },
     "wms": {
-      "path": "project/wms/skills",
-      "description": "WMS 项目技能",
+      "skills": "project/wms/skills",
+      "rules": "project/wms/rules",
+      "knowledge": "project/wms/knowledge",
+      "scripts": "project/wms/scripts",
+      "protocols": "project/wms/protocols",
+      "description": "WMS 项目",
       "always": false
     },
     "trade": {
-      "path": "project/trade/skills",
-      "description": "炒股项目技能",
+      "skills": "project/trade/skills",
+      "rules": "project/trade/rules",
+      "knowledge": "project/trade/knowledge",
+      "scripts": "project/trade/scripts",
+      "description": "项目",
       "always": false
     }
   }

@@ -39,28 +39,60 @@ version: 1.0.0
 
 根据修改层加载对应 Base Rules。
 
-| Domain     | Base Rule                                      |
-| ---------- | ---------------------------------------------- |
-| Entity     | `../rules/wms-backend-dev/entity.rules.md`     |
-| Repository | `../rules/wms-backend-dev/repository.rules.md` |
-| Service    | `../rules/wms-backend-dev/service.rules.md`    |
-| Controller | `../rules/wms-backend-dev/controller.rules.md` |
+| Domain     | Base Rule                                         |
+| ---------- | ------------------------------------------------- |
+| Entity     | `../../rules/wms-backend-dev/entity.rules.md`     |
+| Repository | `../../rules/wms-backend-dev/repository.rules.md` |
+| Service    | `../../rules/wms-backend-dev/service.rules.md`    |
+| Controller | `../../rules/wms-backend-dev/controller.rules.md` |
 
 ## Condition Packs
 
 仅命中场景读取。
 
-| 场景                       | Pack                                                    |
-| -------------------------- | ------------------------------------------------------- |
-| DTO/API契约变化            | `../rules/wms-backend-dev/service-dto.rules.md`         |
-| 报表/分页/导出             | `../rules/wms-backend-dev/service-report.rules.md`      |
-| 事务/多Repository写入      | `../rules/wms-backend-dev/service-transaction.rules.md` |
-| 库存/标签/质检/T100/状态流 | `../rules/wms-backend-dev/service-risk.rules.md`        |
-| Repository查询优化         | `../rules/wms-backend-dev/epository-query.rules.md`     |
-| Repository写入             | `../rules/wms-backend-dev/repository-write.rules.md`    |
-| Entity字段约束             | `../rules/wms-backend-dev/entity-field.rules.md`        |
-| Controller接口             | `../rules/wms-backend-dev/controller-setup.rules.md`    |
-| API消费者影响              | `../rules/wms-backend-dev/controller-contract.rules.md` |
+| 场景                       | Pack                                                             |
+| -------------------------- | ---------------------------------------------------------------- |
+| DTO/API契约变化            | `../../rules/wms-backend-dev/packs/service-dto.rules.md`         |
+| 报表/分页/导出             | `../../rules/wms-backend-dev/packs/service-report.rules.md`      |
+| 事务/多Repository写入      | `../../rules/wms-backend-dev/packs/service-transaction.rules.md` |
+| 库存/标签/质检/T100/状态流 | `../../rules/wms-backend-dev/packs/service-risk.rules.md`        |
+| Repository查询优化         | `../../rules/wms-backend-dev/packs/repository-query.rules.md`     |
+| Repository写入             | `../../rules/wms-backend-dev/packs/repository-write.rules.md`    |
+| Entity字段约束             | `../../rules/wms-backend-dev/packs/entity-field.rules.md`        |
+| Controller接口             | `../../rules/wms-backend-dev/packs/controller-setup.rules.md`    |
+| API消费者影响              | `../../rules/wms-backend-dev/packs/controller-contract.rules.md` |
+
+## Knowledge Discovery
+
+任务开始阶段，根据任务类型判断是否需要检索领域知识。
+
+需要检索：
+
+- 涉及已有业务流程
+- 修改已有领域逻辑
+- 新增业务能力
+- 状态流转变化
+- 性能优化且依赖历史方案
+- 存在业务规则不明确
+
+无需检索：
+
+- 单纯代码格式调整
+- 已明确位置的小范围修改
+- 纯技术重构
+- 编译修复
+
+检索工具：
+
+`~/.claude/scripts/search-knowledge.ps1`
+
+关键词由 Agent 根据任务上下文生成。
+
+执行：
+
+```powershell
+search-knowledge.ps1 -Keyword "<任务关键词>"
+```
 
 ## Loading Strategy
 
@@ -117,3 +149,7 @@ Agent 不主动：
 1. 停止扩展
 2. 输出影响范围
 3. 等待重新分配
+
+```
+
+```

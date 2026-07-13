@@ -7,7 +7,7 @@ version: 1.3.0
 
 # WMS Work Summary — 任务日志工作汇总
 
-必须遵守：@../rules/work-summary.rules.md
+必须遵守：../../rules/wms-work-summary/work-summary.rules.md
 
 ## Trigger
 

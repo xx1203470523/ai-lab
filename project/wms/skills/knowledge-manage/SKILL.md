@@ -5,8 +5,6 @@ description: "WMS 知识库管理：从对话中沉淀领域知识、检索已�
 
 # Knowledge Manage — WMS 知识库管理
 
-必须遵守：@../../rules/skill.rules.md
-
 ## Trigger
 
 - 用户说"沉淀到知识库"、"这个写进 knowledge"

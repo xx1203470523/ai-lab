@@ -7,7 +7,7 @@ description: "dbsql 的 MySQL-only、安全和单据点查询底线。"
 ## Scope
 
 - 当前只支持 MySQL；不要尝试 SQL Server、PostgreSQL、SQLite、ODBC 或项目内其它数据库工具。
-- 连接配置只从 `C:\Users\liyanpeng\.claude\skills\dbsql\.env` 读取，除非用户明确给出临时覆盖参数。
+- 连接配置只从 `~/.claude/skills/dbsql/.env` 读取，除非用户明确给出临时覆盖参数。
 - 默认环境是 `.env` 中的 `DBSQL_DEFAULT_ENV`；当前支持 `dev` 和 `prod`，其中 `prod` 使用原默认生产连接数据。
 - 默认目标数据库是所选环境的 `DB_NAME`；未指定时按所选环境的库名处理，开发环境通常以 `wms_lebg` 作为参考库语义。
 

@@ -37,18 +37,22 @@ if (-not (Test-Path $IndexPath)) {
 }
 
 $lines = Get-Content -Path $IndexPath -Encoding UTF8
-$inTable = $false
+$headerSeen = $false
 $found = 0
 
 foreach ($line in $lines) {
-    # Detect table start
-    if ($line -match '^\|.*Keyword.*\|') { $inTable = $true; continue }
+    # Detect 3-column index table header (not a separator), skip 2-column directory table
+    if (-not $headerSeen -and $line -match '^\|[^|]+\|[^|]+\|[^|]+\|' -and $line -notmatch '^\|[-| ]+\|') {
+        $headerSeen = $true
+        continue
+    }
     # Skip separator rows
     if ($line -match '^\|[-| ]+\|') { continue }
-    # Exit table on non-table line
-    if ($line -notmatch '^\|') { $inTable = $false; continue }
+    # Exit table area on non-table line
+    if ($line -notmatch '^\|') { $headerSeen = $false; continue }
 
-    if ($inTable -and $line -match [regex]::Escape($Keyword)) {
+    # Inside index table body: search for keyword
+    if ($headerSeen -and $line -match [regex]::Escape($Keyword)) {
         if ($Raw) {
             Write-Host $line
         } else {

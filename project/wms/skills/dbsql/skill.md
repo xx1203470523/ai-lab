@@ -36,14 +36,14 @@ Use this skill when the user asks to query WMS database data, inspect table rela
 
 ```powershell
 # 快速检查 .env、MySQL 执行驱动、目标库配置；默认 dev / wms_lebg，Auto 会优先 mysql CLI，缺失时使用 DBeaver JDBC
-& "C:\Users\xx120\.claude\skills\dbsql\scripts\dbsql-mysql.ps1" -Mode Check
+& "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Check
 
 # 开发环境只读查询；/dbsql 只做查询，不自动执行 INSERT/UPDATE/DELETE 等写操作
-& "C:\Users\xx120\.claude\skills\dbsql\scripts\dbsql-mysql.ps1" -Mode Query -Sql 'SELECT 1 AS ok;'
+& "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Query -Sql 'SELECT 1 AS ok;'
 
 # 临时切换目标据点库或已配置环境
-& "C:\Users\xx120\.claude\skills\dbsql\scripts\dbsql-mysql.ps1" -Mode Query -Environment 'dev' -Database 'wms_lebg' -Sql 'SHOW TABLES;'
+& "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Query -Environment 'dev' -Database 'wms_lebg' -Sql 'SHOW TABLES;'
 
 # 生产环境只读检查/查询；生产库名不确定时先用 information_schema 验证连接，再显式传 -Database
-& "C:\Users\xx120\.claude\skills\dbsql\scripts\dbsql-mysql.ps1" -Mode Check -Environment 'prod' -Database 'information_schema'
+& "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Check -Environment 'prod' -Database 'information_schema'
 ```
