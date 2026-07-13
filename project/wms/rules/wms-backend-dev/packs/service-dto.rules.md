@@ -105,10 +105,17 @@ V2：
 - 未确认改变返回结构。
 - 未确认修改 Web/PDA/API 使用字段。
 
-# 5. DTO Separation
+# 5. DTO File Separation
 
-不同用途的数据结构应保持独立。
+一个 `.cs` 文件只放一个 DTO 类，按用途独立文件。不同用途的 DTO 禁止合并到同一文件。
 
-推荐：
+使用反引号分隔：
 
-查询：
+``{Name}Dto`{Purpose}.cs``
+
+标准 `{Purpose}` 示例：`Query`、`Export`、`PagedQuery`。
+
+禁止：
+
+- 多个不相关 DTO 类合并到单一文件。
+- `QueryDto`、`PagedQueryDto`、`ExportDto` 混在同一文件。

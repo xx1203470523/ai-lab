@@ -186,6 +186,19 @@ Service 任务只处理：
 - 为形式拆分代码。
 - Service 直接编写复杂 SQL。
 
+### File Organization
+
+partial 文件按职责独立存储，使用反引号分隔：
+
+``{Name}Service`{Purpose}.cs``
+
+标准 `{Purpose}` 示例：`Query`、`Export`、`Confirm`、`Print`。
+
+禁止：
+
+- 查询和导出逻辑混在同一个 partial 文件。
+- 后置填充和查询构建混在同一个 partial 文件。
+
 ---
 
 ## Contract Protection
