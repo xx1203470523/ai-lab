@@ -1,9 +1,17 @@
-$inputJson = $input | Out-String | ConvertFrom-Json
-$cwd = $inputJson.workspace.current_dir
-$model = $inputJson.model.display_name
+# 读取 stdin
+try { $raw = $input | Out-String } catch { $raw = "" }
 
-$branch = git -C $cwd branch --show-current 2>$null
-$gitRoot = git -C $cwd rev-parse --show-toplevel 2>$null
+# cwd：优先文件系统（切换 worktree 时最准）
+$cwd = if ($pwd) { $pwd.Path } else { (Get-Location).Path }
+
+# Model：正则提取（不依赖完整 JSON 解析，中文乱码也不影响）
+$model = $null
+if ($raw -match '"display_name"\s*:\s*"([^"]+)"') { $model = $matches[1] }
+if (-not $model -and $raw -match '"id"\s*:\s*"([^"]+)"') { $model = $matches[1] }
+if (-not $model) { $model = "?" }
+
+$branch  = try { git -C $cwd branch --show-current 2>$null } catch { $null }
+$gitRoot = try { git -C $cwd rev-parse --show-toplevel 2>$null } catch { $null }
 
 if ($gitRoot) {
     $rootName = Split-Path $gitRoot -Leaf
