@@ -7,13 +7,12 @@
 1. 检查当前仓库是否在 git 仓库中
 2. 检查是否有未提交的变更（`git status` 有 modified 或 untracked 文件）
 3. 远程仓库 `origin` 可访问
-4. 读取 `./rules/push.rules.md`，确认当前分支不在 main/master/production/staging 上
+4. 检查当前分支不在 main/master/production/staging 上
 5. 检查是否落后远程（main / production），若有冲突需先处理
 
 ### 提交内容校验
 
 - 读取 `../reference/push/push.md`，推送前检查推送自定义规范
-- 读取 `./rules/commit.rules.md`，检查提交内容是否符合规范
 - 若有项目自定义规范，读取 `./reference/commit/custom.md`
 
 ## 2. 变基检查 (Rebase Check)
@@ -36,7 +35,6 @@ git rebase origin/main
 
 ### 提交信息
 
-按 `./rules/commit.rules.md` 格式编写。有项目自定义规范时优先使用。
 提交信息尾部禁止含 `Co-Authored-By:` 和 `🤖 Generated with` 行。
 
 ## 4. 推送 (Push)

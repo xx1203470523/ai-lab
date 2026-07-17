@@ -76,7 +76,7 @@ Simple 模式下 task-execute 可以不启 Agent，主会话直接按 Task Contr
 
 ### Step 2: 边界绘制与拆包
 
-读取 `./rules/decomposition.rules.md` 确认拆包策略。
+确认拆包策略。
 
 1. 对每个命中的知识域，判断涉及的系统层级
    - 有成熟分层 skill 的项目（如 WMS）：借鉴其 Entity/Service/Controller 分层

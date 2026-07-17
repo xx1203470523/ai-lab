@@ -103,13 +103,12 @@
 2. 收到 Agent 输出后检查：
    - 正常完成（含"完成报告"）→ 进入 Step 2c
    - 包含 `[ESCALATE]` → 暂停执行，按以下流程处理：
-     a. 读取 `./rules/escalation.rules.md`
-     b. 向用户展示 Agent 的 ESCALATE 报告
-     c. 用户选择：
+     a. 向用户展示 Agent 的 ESCALATE 报告
+     b. 用户选择：
         - 批准继续 → Agent 重新获得 3 次配额，继续执行
         - 拒绝/调整 manifest → 标记 blocked，等用户补充后重试
         - 跳过当前包 → 标记 blocked，继续下一个包
-     d. 用户选择后更新 plan 文件
+     c. 用户选择后更新 plan 文件
    - Agent 异常终止 → 标记 blocked，记录错误信息，询问用户是否重试或跳过
 
 ### Step 2c: 验证

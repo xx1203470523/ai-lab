@@ -18,15 +18,15 @@ description: "Git 版本控制操作：推送/提交/push、变基/rebase、工�
 
 ## 路由
 
-根据用户意图，**先阅读对应的执行流程文件**，规则文件由流程在对应步骤按需加载：
+根据用户意图，**先加载对应 rules，再按 workflow 执行**：
 
-| 命令 | 入口 | 说明 |
-|------|------|------|
-| Push（推送 / push / 提交推送 / 上传代码） | `./workflow/push.md` | 前置检查 → 变基 → 提交 → 推送 → MR 链接 |
-| Worktree（工作区 / worktree） | `./workflow/worktree.md` | 创建/进入/列表/删除工作区 |
-| Branch（分支 / branch / 创建分支） | `./rules/branch.rules.md` | 分支命名与创建规范 |
-| Rebase（变基 / rebase） | `./rules/rebase.rules.md` | 通用步骤用已有知识，rules 文件只含项目特定约束 |
-| Stash（贮藏 / stash） | `./rules/stash.rules.md` | 通用步骤用已有知识，rules 文件只含命名与清理规范 |
+| 命令 | Rules | Workflow | 说明 |
+|------|-------|----------|------|
+| Push（推送 / push / 提交推送 / 上传代码） | `./rules/push.rules.md`、`./rules/commit.rules.md` | `./workflow/push.md` | 前置检查 → 变基 → 提交 → 推送 → MR 链接 |
+| Worktree（工作区 / worktree） | `./rules/branch.rules.md`、`./rules/worktree.rules.md` | `./workflow/worktree.md` | 创建/进入/列表/删除工作区 |
+| Branch（分支 / branch / 创建分支） | `./rules/branch.rules.md` | — | 分支命名与创建规范 |
+| Rebase（变基 / rebase） | `./rules/rebase.rules.md` | — | 通用步骤用已有知识，rules 文件只含项目特定约束 |
+| Stash（贮藏 / stash） | `./rules/stash.rules.md` | — | 通用步骤用已有知识，rules 文件只含命名与清理规范 |
 
 ## 未匹配命令
 
