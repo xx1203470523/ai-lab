@@ -7,7 +7,7 @@ version: 1.3.0
 
 # WMS Work Summary — 任务日志工作汇总
 
-必须遵守：../../rules/wms-work-summary/work-summary.rules.md
+必须遵守：./rules/work-summary.rules.md
 
 ## Trigger
 
@@ -20,7 +20,7 @@ version: 1.3.0
 
 ## Output Goal
 
-输出无列头、可复制到 Excel 的明细行，默认用 ASCII 竖线 `|` 分隔。列顺序以 `../../rules/wms-work-summary/work-summary.rules.md` 为准。
+输出无列头、可复制到 Excel 的明细行，默认用 ASCII 竖线 `|` 分隔。列顺序以 `./rules/work-summary.rules.md` 为准。
 
 ## Fast Workflow
 

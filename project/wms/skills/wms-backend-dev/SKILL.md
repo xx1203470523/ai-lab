@@ -43,10 +43,10 @@ Rules 仅用于代码设计、新增、修改、审查阶段。
 
 | 场景                               | Base Rule                                               |
 | ---------------------------------- | ------------------------------------------------------- |
-| 新增 Entity / 修改 Entity          | `../../rules/wms-backend-dev/entity.rules.md`           |
-| 新增 Repository / 修改查询写入逻辑 | `../../rules/wms-backend-dev/repository.rules.md`       |
-| 新增 Service / 修改业务编排        | `../../rules/wms-backend-dev/service.rules.md`          |
-| 新增 Controller / 修改接口契约     | `../../rules/wms-backend-dev/controller.rules.md`       |
+| 新增 Entity / 修改 Entity          | `./rules/entity.rules.md`           |
+| 新增 Repository / 修改查询写入逻辑 | `./rules/repository.rules.md`       |
+| 新增 Service / 修改业务编排        | `./rules/service.rules.md`          |
+| 新增 Controller / 修改接口契约     | `./rules/controller.rules.md`       |
 
 禁止：
 
@@ -61,15 +61,15 @@ Condition Pack 仅在代码设计、新增、修改、审查时加载。
 
 | 场景                       | Pack                                                                |
 | -------------------------- | ------------------------------------------------------------------- |
-| DTO/API契约变化            | `../../rules/wms-backend-dev/packs/service-dto.rules.md`            |
-| 报表/分页/导出             | `../../rules/wms-backend-dev/packs/service-report.rules.md`         |
-| 事务/多Repository写入      | `../../rules/wms-backend-dev/packs/service-transaction.rules.md`    |
-| 库存/标签/质检/T100/状态流 | `../../rules/wms-backend-dev/packs/service-risk.rules.md`           |
-| Repository查询优化         | `../../rules/wms-backend-dev/packs/repository-query.rules.md`       |
-| Repository写入             | `../../rules/wms-backend-dev/packs/repository-write.rules.md`       |
-| Entity字段约束             | `../../rules/wms-backend-dev/packs/entity-field.rules.md`           |
-| Controller接口             | `../../rules/wms-backend-dev/packs/controller-setup.rules.md`       |
-| API消费者影响              | `../../rules/wms-backend-dev/packs/controller-contract.rules.md`    |
+| DTO/API契约变化            | `./rules/packs/service-dto.rules.md`            |
+| 报表/分页/导出             | `./rules/packs/service-report.rules.md`         |
+| 事务/多Repository写入      | `./rules/packs/service-transaction.rules.md`    |
+| 库存/标签/质检/T100/状态流 | `./rules/packs/service-risk.rules.md`           |
+| Repository查询优化         | `./rules/packs/repository-query.rules.md`       |
+| Repository写入             | `./rules/packs/repository-write.rules.md`       |
+| Entity字段约束             | `./rules/packs/entity-field.rules.md`           |
+| Controller接口             | `./rules/packs/controller-setup.rules.md`       |
+| API消费者影响              | `./rules/packs/controller-contract.rules.md`    |
 
 禁止：
 

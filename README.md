@@ -16,9 +16,8 @@ ai-lab/
 │   └── adapters/          #   工具适配（待建设）
 │
 ├── project/               # 项目级资产（业务相关）
-│   └── wms/               #   WMS 项目的 Skills、Rules、Knowledge
+│   └── wms/               #   WMS 项目的 Skills、Knowledge
 │       ├── skills/        #     wms-dev、wms-backend-dev、dbsql 等
-│       ├── rules/         #     wms-backend-dev 分层约束
 │       └── knowledge/     #     领域知识（report-development 等）
 │
 └── registry/              # 项目注册（待建设）
@@ -51,7 +50,6 @@ WMS 功能开发优先。AI-Lab 优化来自实际痛点，不来自设计。
 
 ```
 .ai/rules/git/          → 跨项目通用
-project/wms/rules/       → WMS 专属
 project/wms/knowledge/   → WMS 领域知识
 ```
 

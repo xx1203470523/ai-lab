@@ -17,7 +17,6 @@
     },
     "wms": {
       "skills": "project/wms/skills",
-      "rules": "project/wms/rules",
       "knowledge": "project/wms/knowledge",
       "scripts": "project/wms/scripts",
       "protocols": "project/wms/protocols",
