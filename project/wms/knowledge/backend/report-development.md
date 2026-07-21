@@ -1,8 +1,8 @@
 # WMS 报表开发参考
 
-> 最后更新: 2026-07-20
-> 来源：入库综合报表多轮性能优化实战
-> 变更：取消分页/导出查询分离，统一最小 JOIN；时间条件提升为核心门禁；保留分批游标导出
+> 最后更新: 2026-07-21
+> 来源：入库综合报表多轮性能优化实战 + COUNT/数据查询分离重构
+> 变更：COUNT 与数据查询分离原则；移除 Clone/MergeTable 模式；ToPageAsync 双查询说明
 
 ---
 
@@ -68,9 +68,9 @@
 - **最小 JOIN**：只 JOIN 筛选条件（WHERE）需要的表，SELECT 字段不驱动 JOIN。
 - **跨表筛选用 EXISTS**：关联表条件通过 `SqlFunc.Subqueryable<T>().Where(...).Any()` 内联。
 - **SELECT 只取主表 + JOIN 表的核心字段**，其余字段后置 Fill 补齐。
-- 分页走 `BuildQuery().ToPageAsync()` → `FillDataAsync()`。
-- 导出走 `BuildQuery().ToListAsync()` → `FillDataAsync()`（或分批游标 `FillDataAsync`）。
-- 导出 COUNT 用同一构建器 `Clone().MergeTable().CountAsync()`。
+- 分页走 `BuildQuery().ToPageAsync()` → `FillDataAsync()`（ToPageAsync 内置 COUNT + 数据双查询）。
+- 导出走 `BuildCountQuery().CountAsync()` 先判断阈值 → 通过后 `BuildDataQuery().ToListAsync()` → `FillDataAsync()`。
+- 大数据量场景 COUNT 和数据查询**分离**，避免 Clone/MergeTable 的 SQL 膨胀。
 
 关键约束：
 
@@ -146,9 +146,39 @@
 
 ---
 
-## 五、COUNT 优化
+## 五、COUNT 与数据查询分离
 
-- 导出 COUNT 用查询构建器 `Clone().MergeTable()`，不跑 Fill。
+### 5.1 ToPageAsync 双查询
+
+系统封装的 `ToPageAsync()` 一次调用同时执行 COUNT + 分页数据查询，适合常规分页列表。大数据量导出场景应**分离**。
+
+### 5.2 分离原则
+
+COUNT 查询和数据查询**需求不同**，不应共用构建器：
+
+| | COUNT 查询 | 数据查询 |
+|---|---|---|
+| SELECT | `SqlFunc.AggregateCount` 即可 | 业务字段 |
+| JOIN | 仅筛选条件表 | 筛选条件表 + 展示字段表 |
+| ORDER BY | 不需要 | 不需要（雪花 ID 自然有序） |
+| Fill | 不跑 | 需 Fill |
+
+分离后各自方法：
+- `BuildCountQuery()` — 最简 COUNT，不 JOIN 展示表
+- `BuildDataQuery()` — 按需 JOIN，返回数据列
+
+### 5.3 Clone/MergeTable 问题
+
+SqlSugar 的 `Clone()` 和 `MergeTable()` 看似方便复用查询，实际引入问题：
+
+- **Clone()**：深拷贝整个 Queryable 对象树，大查询开销显著。
+- **MergeTable()**：将原查询包装为 `SELECT * FROM (原SQL) AS a`，多一层子查询嵌套，MySQL 优化器可能生成非预期执行计划。
+- 两者组合 `Clone().MergeTable().CountAsync()` 相当于深拷贝 + 子查询包裹 + COUNT，写法取巧但 SQL 膨胀。
+
+**正确做法**：直接写独立的 `BuildCountQuery()`，返回 `ISugarQueryable<T>`，Select 只含聚合函数，避免 Clone/MergeTable。
+
+### 5.4 导出阈值
+
 - COUNT 常量 `ExportMaxRows` 建议 100000。
 - GROUP BY 聚合报表 COUNT 需单独处理去重逻辑。
 
@@ -165,6 +195,8 @@
 | `pageSize=100000` 做导出      | 语义混乱、内存不可控                        |
 | SELECT 中 N×4 关联子查询      | 10w 行 = 40w 次子查询                       |
 | `List.Where()` 在循环内       | O(n×m) 线性退化                             |
+| `Clone().MergeTable()` 做 COUNT | 深拷贝 + 子查询嵌套，SQL 膨胀                |
+| COUNT 复用数据查询构建器       | COUNT 不需要展示字段和展示 JOIN，应独立构建  |
 
 ---
 
@@ -217,12 +249,15 @@
 - 大量 ID IN 查询
 - 深分页
 - 同步大数据导出
+- Clone/MergeTable 做 COUNT
+- COUNT 复用数据查询构建器
 
 建议：
 
 - 时间门禁兜底
 - 最小 JOIN
 - 查询模型统一
+- COUNT 与数据查询分离
 - 小表驱动大表
 - 明细先聚合
 - 维度后关联

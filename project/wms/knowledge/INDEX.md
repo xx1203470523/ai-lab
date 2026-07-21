@@ -15,7 +15,7 @@
 
 | 关键词 | 文件 | 说明 |
 |--------|------|------|
-| 报表,查询策略,导出,分页,性能,CommonService,通用服务 | `backend/report-development.md` | 报表分页/导出策略选择、路由命名规范、禁止项、后置填充模式、通用逻辑抽取 |
+| 报表,查询策略,导出,分页,性能,CommonService,通用服务,ToPageAsync,Clone,MergeTable,COUNT,分离,CountAsync | `backend/report-development.md` | 报表分页/导出策略、路由命名、禁止项、后置填充、COUNT与数据查询分离、Clone/MergeTable问题、通用逻辑抽取 |
 | 质检,判定,qcbc012,qcbc002,不良品,仓库分配 | `backend/qual-judgment.md` | T100 字段映射、判定区分枚举、判定分组、IQC 仓库分配规则 |
 | 工厂,管线,pipeline,Factory,LoadData,FillData,ValidateData,GenerateData,PersistData,Adapt,五层,5层 | `backend/factory-pipeline.md` | 入库工厂管线五层分离模式：LoadData/FillData/ValidateData/GenerateData/PersistData 职责边界与DB约束、Adapt+覆写模式、调用链示例 |
 | 上架,上架标签,储位,仓库来源,upshelves | `backend/upshelves-label.md` | 上架标签两条创建路径、仓库/储位来源优先级、推荐储位逻辑 |
