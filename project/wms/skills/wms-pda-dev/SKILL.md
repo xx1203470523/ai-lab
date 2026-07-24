@@ -21,6 +21,12 @@ version: 0.1.0
 - 路径：`IMTC.WMS.PDA/`
 - 技术栈：uni-app（Vue） + 混合开发
 
+## Completion Verification
+
+- 每次代码修改完成后，必须执行 `IMTC.WMS.PDA/` build
+- build 输出默认忽略 warning，只保留 error/fail/失败摘要
+- error 必须清零；未执行 build 不得报告完成
+
 ## Routing（预留）
 
 | 场景 | 入口 | 状态 |

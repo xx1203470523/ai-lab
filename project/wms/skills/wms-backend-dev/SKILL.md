@@ -142,6 +142,12 @@ Agent 不主动：
 - 扫描全部 Rules
 - 扩大修改范围
 
+## Completion Verification
+
+- 每次代码修改完成后，必须执行 `IMTC.WMS.AdminWebApi/` build
+- build 输出默认忽略 warning，只保留 error/fail/失败摘要
+- error 必须清零；未执行 build 不得报告完成
+
 ## Project Boundary
 
 允许修改：

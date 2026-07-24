@@ -81,6 +81,12 @@ Complex 任务读取：
 | 前端 AdminUI | `wms-frontend-dev` | `IMTC.WMS.AdminUI/`     |
 | PDA 手持端   | `wms-pda-dev`      | `IMTC.WMS.PDA/`         |
 
+## Completion Verification
+
+- 每次代码修改完成后，必须执行受影响项目的 build
+- build 输出默认忽略 warning，只保留 error/fail/失败摘要
+- error 必须清零；未执行 build 不得报告 `Done`
+
 ## Rule Loading
 
 终端 Skill 负责加载具体 Rules。
