@@ -1,30 +1,30 @@
 # WMS 知识库索引
 
-> 使用 `../scripts/search-knowledge.ps1 -Keyword "<关键词>"` 检索。
+> 使用 `./scripts/search-knowledge.ps1 -Keyword "<关键词>"` 检索。
 > 后续升级 RAG 时，本索引用作 chunk 索引源。
 
 ## 目录
 
-| 目录 | 内容 |
-|------|------|
-| `backend/` | 后端业务知识（实体、服务、数据库、领域规则） |
-| `frontend/` | 前端业务知识（页面、组件、路由） |
-| `pda/` | PDA 业务知识（扫码、设备、离线） |
+| 目录        | 内容                                         |
+| ----------- | -------------------------------------------- |
+| `backend/`  | 后端业务知识（实体、服务、数据库、领域规则） |
+| `frontend/` | 前端业务知识（页面、组件、路由）             |
+| `pda/`      | PDA 业务知识（扫码、设备、离线）             |
 
 ## 索引
 
-| 关键词 | 文件 | 说明 |
-|--------|------|------|
+| 关键词                                                                                                                            | 文件                            | 说明                                                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | 报表,查询策略,导出,分页,性能,CommonService,通用服务,ToPageAsync,Clone,MergeTable,COUNT,分离,CountAsync,锁,LockAsync,从库,读写分离 | `backend/report-development.md` | 报表分页/导出策略、路由命名、禁止项、后置填充、COUNT与数据查询分离、Clone/MergeTable问题、报表级用户锁、从库查询、通用逻辑抽取 |
-| 质检,判定,qcbc012,qcbc002,不良品,仓库分配 | `backend/qual-judgment.md` | T100 字段映射、判定区分枚举、判定分组、IQC 仓库分配规则 |
-| 工厂,管线,pipeline,Factory,LoadData,FillData,ValidateData,GenerateData,PersistData,Adapt,五层,5层 | `backend/factory-pipeline.md` | 入库工厂管线五层分离模式：LoadData/FillData/ValidateData/GenerateData/PersistData 职责边界与DB约束、Adapt+覆写模式、调用链示例 |
-| 上架,上架标签,储位,仓库来源,upshelves | `backend/upshelves-label.md` | 上架标签两条创建路径、仓库/储位来源优先级、推荐储位逻辑 |
-| 上架,上架策略 | (待建) | 上架策略与库位分配 |
-| 出库,拣货,发货 | (待建) | 出库业务流程 |
-| 库存,库存查询,盘点 | (待建) | 库存管理与盘点 |
-| T100,接口,回执 | (待建) | T100 对接规范 |
-| 立库,自动化,堆垛机 | (待建) | 自动化立库接口与状态流 |
-| 权限码,鉴权,菜单 | (待建) | Controller 权限码与菜单映射 |
+| 质检,判定,qcbc012,qcbc002,不良品,仓库分配                                                                                         | `backend/qual-judgment.md`      | T100 字段映射、判定区分枚举、判定分组、IQC 仓库分配规则                                                                        |
+| 工厂,管线,pipeline,Factory,LoadData,FillData,ValidateData,GenerateData,PersistData,Adapt,五层,5层                                 | `backend/factory-pipeline.md`   | 入库工厂管线五层分离模式：LoadData/FillData/ValidateData/GenerateData/PersistData 职责边界与DB约束、Adapt+覆写模式、调用链示例 |
+| 上架,上架标签,储位,仓库来源,upshelves                                                                                             | `backend/upshelves-label.md`    | 上架标签两条创建路径、仓库/储位来源优先级、推荐储位逻辑                                                                        |
+| 上架,上架策略                                                                                                                     | (待建)                          | 上架策略与库位分配                                                                                                             |
+| 出库,拣货,发货                                                                                                                    | (待建)                          | 出库业务流程                                                                                                                   |
+| 库存,库存查询,盘点                                                                                                                | (待建)                          | 库存管理与盘点                                                                                                                 |
+| T100,接口,回执                                                                                                                    | (待建)                          | T100 对接规范                                                                                                                  |
+| 立库,自动化,堆垛机                                                                                                                | (待建)                          | 自动化立库接口与状态流                                                                                                         |
+| 权限码,鉴权,菜单                                                                                                                  | (待建)                          | Controller 权限码与菜单映射                                                                                                    |
 
 ## 使用方式
 

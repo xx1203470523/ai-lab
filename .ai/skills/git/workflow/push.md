@@ -13,7 +13,7 @@
 ### 提交内容校验
 
 - 读取 `../reference/push/push.md`，推送前检查推送自定义规范
-- 若有项目自定义规范，读取 `./reference/commit/custom.md`
+- 若有项目自定义规范，读取 `../reference/commit/custom.md`
 
 ## 2. 变基检查 (Rebase Check)
 

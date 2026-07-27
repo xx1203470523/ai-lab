@@ -1,8 +1,8 @@
 # WMS 报表开发参考
 
-> 最后更新: 2026-07-21
-> 来源：入库综合报表多轮性能优化实战 + COUNT/数据查询分离重构
-> 变更：COUNT 与数据查询分离原则；移除 Clone/MergeTable 模式；ToPageAsync 双查询说明
+> 最后更新: 2026-07-22
+> 来源：入库综合报表多轮性能优化实战 + COUNT/数据查询分离重构 + 报表子查询 IIF/并行连接修复
+> 变更：新增 LINQ 三元 IIF 反模式；新增 Task.WhenAll 并行连接冲突反模式
 
 ---
 
@@ -197,6 +197,19 @@ SqlSugar 的 `Clone()` 和 `MergeTable()` 看似方便复用查询，实际引�
 | `List.Where()` 在循环内       | O(n×m) 线性退化                             |
 | `Clone().MergeTable()` 做 COUNT | 深拷贝 + 子查询嵌套，SQL 膨胀                |
 | COUNT 复用数据查询构建器       | COUNT 不需要展示字段和展示 JOIN，应独立构建  |
+| LINQ 三元表达式 `?:` 在 `Where` 中 | SqlSugar 转为 `IIF(condition, arg2, arg3)`，`StartsWith`(LIKE) / `Subqueryable`(EXISTS) 不能作为 IIF 参数 |
+| `Task.WhenAll` 并行查询同一 `SqlSugarClient` | `SqlSugarClient` 非线程安全，并发查询报 `MySqlConnection is already in use` |
+
+### 6.1 LINQ 三元 → IIF 不支持 StartsWith/Subqueryable
+
+三元 `? :` 被 SqlSugar 转 `IIF(c, a, b)`，`StartsWith`(LIKE) / `Subqueryable`(EXISTS) 不能作参数。
+
+- **StartsWith**：改 `cond ? StartsWith : Contains` → `(cond && StartsWith) || (!cond && Contains)`
+- **Subqueryable**：拆 `?:` 为两个 `WhereIF`，参考 `UrgentMaterialProgressReportService`
+
+### 6.2 Task.WhenAll 并行查询 → MySQL 连接冲突
+
+`SqlSugarClient` 非线程安全，多 Task 并发 `.ToListAsync()` 报 `MySqlConnection is already in use`。改为顺序 `await`（用户/字典查询数据量小，无性能影响）。
 
 ---
 

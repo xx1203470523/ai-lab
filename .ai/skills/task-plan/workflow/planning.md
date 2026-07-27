@@ -62,7 +62,7 @@ Simple 模式下 task-execute 可以不启 Agent，主会话直接按 Task Contr
 
 ### Step 1: 知识索引扫描
 
-先读取 `./workflow/boundary-discovery.md` 了解发现流程。
+先读取 `boundary-discovery.md` 了解发现流程。
 
 执行：
 
@@ -128,7 +128,7 @@ Simple 模式下 task-execute 可以不启 Agent，主会话直接按 Task Contr
    - 知识索引命中情况
    - 未覆盖部分（如有）
 2. 用户确认后：
-   - 读取 `./reference/plan-template.md` 获取模板
+   - 读取 `../reference/plan-template.md` 获取模板
    - 创建 `plans/` 目录（如不存在）
    - 生成文件名：`task-{当前日期}-{当前时间}-{任务关键词slug}.md`
    - 填入 YAML frontmatter + Markdown 正文

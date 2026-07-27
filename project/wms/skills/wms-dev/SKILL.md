@@ -35,16 +35,17 @@ version: 1.0.0
 
 任务涉及以下关键词时，**先检索知识库**确保使用正确的设计模式：
 
-| 触发关键词 | 检索命令 | 加载内容 |
-|---|---|---|
-| 工厂、Factory、管线、pipeline、单据生成、上架单生成、质检单生成、Adapt、LoadData、FillData、ValidateData、GenerateData、PersistData、五层 | `../scripts/search-knowledge.ps1 -Keyword "工厂"` | `backend/factory-pipeline.md` |
+| 触发关键词                                                                                                                                | 检索命令                                         | 加载内容                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------- |
+| 工厂、Factory、管线、pipeline、单据生成、上架单生成、质检单生成、Adapt、LoadData、FillData、ValidateData、GenerateData、PersistData、五层 | `./scripts/search-knowledge.ps1 -Keyword "工厂"` | `backend/factory-pipeline.md` |
 
 检索命中后：
+
 1. 读取知识文件，理解五层分离的设计意图
 2. **新写或重构 Factory 方法**：遵守 LoadData/FillData/ValidateData/GenerateData/PersistData 分层，GenerateData 不落库、ValidateData 纯内存
 3. **仅修改现有逻辑**：参考现有方法的层次归属，不改动时跳过但保持后续新增一致
 
-**其他关键词**：直接运行 `../scripts/search-knowledge.ps1 -Keyword "<用户意图关键词>"` 检索，命中则加载对应知识文件。
+**其他关键词**：直接运行 `./scripts/search-knowledge.ps1 -Keyword "<用户意图关键词>"` 检索，命中则加载对应知识文件。
 
 ## Workflow
 
@@ -107,11 +108,11 @@ wms-dev 只负责传递：
 
 Agent 任务协议：
 
-`../../protocols/agent-task-packet.md`
+`./protocols/agent-task-packet.md`
 
 Agent 执行协议：
 
-`../../protocols/agent-context.md`
+`./protocols/agent-context.md`
 
 Agent 拆分：
 

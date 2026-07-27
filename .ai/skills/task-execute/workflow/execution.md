@@ -77,7 +77,7 @@
 
 ### Step 2a: 启动 Agent
 
-1. 读取 `./reference/task-packet-template.md` 获取标准 prompt 模板
+1. 读取 `../reference/task-packet-template.md` 获取标准 prompt 模板
 2. 用当前包的字段填充模板：
    - 任务目标 ← package.name
    - **终端技能** ← package.skill（Agent 启动后先用 Skill 工具调用此技能）
