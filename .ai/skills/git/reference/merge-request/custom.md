@@ -1,60 +1,60 @@
-# Merge Request Information Contract
+# Merge Request 信息准备契约
 
-This reference defines how the Git Push workflow prepares MR information. It does not create, update, approve, assign, label, or merge an MR.
+本参考文件定义 Git Push workflow 如何准备 MR 信息。不负责创建、更新、审批、分配 reviewer、添加 label 或合并 MR。
 
-## Format precedence
+## 格式优先级
 
-Use the first applicable format source:
+按以下顺序使用第一个适用的格式来源：
 
-1. An explicit format or language requested by the user.
-2. A repository merge-request template.
-3. A project-level MR Skill or documented project convention.
-4. This general fallback.
+1. 用户明确要求的格式或语言。
+2. 仓库 MR 模板。
+3. 项目级 MR Skill 或项目文档规范。
+4. 本文件中的通用 fallback。
 
-A project-specific format may replace the fallback, but the Push workflow must preserve the project's headings and order rather than inventing a second format.
+项目专属格式可以替换 fallback，但 Push workflow 必须遵循项目既有章节及顺序，不得另行发明第二套格式。
 
-## Suggested title
+## 建议标题
 
-Prefer the current task's commit subject. If no commit subject exists, use a concise `type(scope): summary` title supported by the task request and repository convention. Keep identifiers, branch names, and commands unchanged.
+优先使用当前任务的 commit subject。没有 commit subject 时，使用符合用户需求和仓库规范的简短 `type(scope): summary` 标题。代码标识符、分支名和命令保持原样。
 
-## Suggested description
+## 建议正文
 
-Build the description only from facts supported by:
+正文只能使用以下事实来源能够证明的内容：
 
-- the user's request and acceptance criteria;
-- the current task log and index fragment;
-- commits between the resolved target and source branches;
-- the target-to-source diff summary;
-- checks actually executed during this workflow;
-- explicit exclusions or intentionally untouched scope.
+- 用户需求和验收条件；
+- 当前任务日志和索引片段；
+- 目标分支与源分支之间的提交记录；
+- 目标到源的 diff 摘要；
+- 本次 workflow 实际执行的检查；
+- 明确排除项或有意保持不变的范围。
 
-Follow the selected project format. Under the general fallback, use:
+遵循已选定的项目格式。通用 fallback 使用：
 
 ```markdown
 ## Summary
 
-- <purpose and affected workflow>
+- <改动目的和受影响流程>
 
 ## Changed Files
 
-- `<path>` - <concrete change>
+- `<path>` - <具体改动>
 
 ## Verification
 
-- <check actually run, or clearly stated not run>
+- <实际执行的检查，或明确说明未执行>
 ```
 
-Use `## Test Scenarios` only when the task changes user-visible or business behavior and concrete scenarios are available. Use `## Exclusions` only when explicit exclusions materially help reviewers. For small changes, `## Summary` and `## Verification` are sufficient. Omit empty sections.
+只有任务改变用户可见行为或业务行为且已有具体场景时，才增加 `## Test Scenarios`。只有存在明确排除项且有助于 reviewer 理解范围时，才增加 `## Exclusions`。小改动可以只保留 `## Summary` 和 `## Verification`。不保留空章节。
 
-## Quality and safety
+## 质量与安全
 
-- State what changed and why, not a large raw diff.
-- Do not claim a build, test, review, or deployment that did not run.
-- Do not include uncommitted unrelated changes.
-- Do not include secrets, tokens, or unrelated private information.
-- Do not append `Co-Authored-By:` or `🤖 Generated with` lines.
-- Keep the description concise and reviewer-oriented.
+- 说明改了什么以及为什么改，不粘贴大段原始 diff。
+- 不得声称执行过未执行的构建、测试、审查或部署。
+- 不得包含未提交的无关变更。
+- 不得包含密钥、令牌或无关私密信息。
+- 不得追加 `Co-Authored-By:` 或 `🤖 Generated with` 行。
+- 保持正文简洁、面向 reviewer。
 
-## Why this is not scripted yet
+## 暂不脚本化的原因
 
-The section selection and wording still depend on repository context and project-specific MR conventions. They have not yet stabilized across enough repeated tasks to justify a generator. Keep the contract explicit and reviewable until repeated usage provides a stable scripting boundary.
+章节选择和措辞仍依赖仓库上下文及项目 MR 规范，尚未在足够多的重复任务中稳定下来。先保留可审阅的显式契约，待执行边界稳定后再考虑生成脚本。
