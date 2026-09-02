@@ -1,66 +1,81 @@
 # Git Push
 
-## 1. 前置检查 (Pre-checks)
+## 1. Pre-checks
 
-### 环境与分支校验
+### Repository and branch
 
-1. 检查当前仓库是否在 git 仓库中
-2. 检查是否有未提交的变更（`git status` 有 modified 或 untracked 文件）
-3. 远程仓库 `origin` 可访问
-4. 检查当前分支不在 main/master/production/staging 上
-5. 检查是否落后远程（main / production），若有冲突需先处理
+1. Confirm the current directory is inside a Git repository.
+2. Inspect `git status` and identify modified and untracked files.
+3. Confirm that `origin` is reachable.
+4. Reject the operation when the current branch is `main`, `master`, `production`, or `staging`.
+5. Resolve one target/base branch before rebase. Prefer, in order:
+   - an explicit target supplied by the user;
+   - the repository's documented MR or branch policy;
+   - the remote default branch reported by Git or the hosting tool.
+6. If no target can be resolved without guessing, stop and ask the user. Use the same resolved target for fetch, rebase, MR lookup, and the creation link.
 
-### 提交内容校验
+### Commit scope and local conventions
 
-- 读取 `../reference/push/push.md`，推送前检查推送自定义规范
-- 若有项目自定义规范，读取 `../reference/commit/custom.md`
+- Read `../reference/push/push.md` before pushing.
+- If the repository has a custom commit convention, read `../reference/commit/custom.md`.
+- Load `../reference/merge-request/custom.md` when preparing MR title or description.
+- Keep unrelated dirty files unchanged and out of the commit.
 
-## 2. 变基检查 (Rebase Check)
+## 2. Rebase check
 
-提交前检查是否基于远端最新的 main/production，有更新则变基：
+Before committing, fetch and rebase onto the resolved remote target:
 
-```bash
-git fetch origin main
-git rebase origin/main
+```text
+git fetch origin <target-branch>
+git rebase origin/<target-branch>
 ```
 
-- rebase 冲突时：`git rebase --abort`，向用户报告冲突文件，不盲目强制解决
+If rebase conflicts, run `git rebase --abort`, report the conflicting files, and stop. Do not force a resolution or use a merge as a shortcut.
 
-## 3. 提交 (Commit)
+## 3. Commit
 
-### 范围控制
+### Scope control
 
-仅提交当前对话任务涉及的代码变更。工作区中与当前任务无关的改动不纳入本次提交。
-禁止使用 `git add -A` / `git add .`，逐文件 `git add`。
+Commit only changes belonging to the current task. Stage files explicitly; never use `git add -A` or `git add .`.
 
-### 提交信息
+### Commit message
 
-提交信息尾部禁止含 `Co-Authored-By:` 和 `🤖 Generated with` 行。
+Follow the loaded repository/project convention. The commit message must not end with `Co-Authored-By:` or `🤖 Generated with` lines.
 
-## 4. 推送 (Push)
+## 4. Push
 
-```bash
-git push -u origin {branch-name}
+```text
+git push -u origin <source-branch>
 ```
 
-推送成功后报告：分支名、提交 hash、推送结果、MR 链接。
+After a successful push, report the source branch, commit hash, push result, and MR lookup/link result.
 
-### 生成 MR 链接
+## 5. MR lookup and suggested content
 
-- 运行 `glab mr list --source-branch {branch-name} --output json` 检查是否已有 MR
-- 若已有 MR，直接输出现有 MR 链接
-- 若尚无 MR，输出创建链接：`https://<host>/<project>/-/merge_requests/new?merge_request[source_branch]={branch-name}&merge_request[target_branch]=main`
-- `<host>` 和 `<project>` 从 `glab repo view --output json` 的 `web_url` 提取
-- MR 链接单独一行、醒目展示
+1. Set `source-branch` to the current branch and use the single previously resolved target branch.
+2. Check for an existing MR using both branches:
 
-### MR 描述
+```text
+glab mr list --source-branch <source-branch> --target-branch <target-branch> --output json
+```
 
-MR 描述正文尾部禁止含以下行：
+3. If a matching MR exists, report its existing web URL and do not create or update an MR.
+4. If no matching MR exists, obtain the repository `web_url` from `glab repo view --output json`, then URI-encode both branch names when building the web creation link:
 
-- `Co-Authored-By: Claude <noreply@anthropic.com>`
-- `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+```text
+https://<host>/<project>/-/merge_requests/new?merge_request[source_branch]=<encoded-source>&merge_request[target_branch]=<encoded-target>
+```
 
-## 3. 异常处理 (Error Handling)
+5. Prepare, but do not submit, an MR suggestion:
+   - title: prefer the current task's commit subject;
+   - description: follow `../reference/merge-request/custom.md` and any stricter repository/project format;
+   - include only facts supported by the user request, task log, target-to-source commit log, diff summary, and checks actually run;
+   - never append Claude attribution lines.
 
-- 执行失败立即停止后续操作，向用户详细说明失败原因
-- 推送被拒（non-fast-forward）：检查是否有人在同分支协作，优先 rebase 而非 merge
+6. The ordinary Push workflow ends after reporting the existing MR or creation link and suggested content. It must not call `glab mr create`, update an MR, assign reviewers, add labels, or alter milestones.
+
+## 6. Error handling
+
+- Stop immediately when a required operation fails and report the concrete reason.
+- For a non-fast-forward push rejection, check for collaboration on the source branch and prefer rebase over merge.
+- If GitLab CLI is unavailable or the remote is not GitLab, report that the push completed but MR lookup/link preparation was skipped or degraded; do not invent a URL.

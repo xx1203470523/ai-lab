@@ -1,34 +1,36 @@
 ---
 name: git
-description: "Git 版本控制操作：推送/提交/push、变基/rebase、工作区/worktree、贮藏/stash、分支/branch。触发关键词：推送、push、提交推送、commit and push、推送代码、提交代码、上传代码、变基、rebase、工作区、worktree、贮藏、stash、分支、branch、创建分支"
+description: "Git version-control operations for push/push-and-commit, rebase, worktree, stash, and branch workflows. Trigger keywords: 推送、push、提交并推送、commit and push、推送代码、上传代码、变基、rebase、工作区、worktree、贮藏、stash、分支、branch、创建分支。Commit-only requests do not enter the Push workflow."
 ---
 
 # Git
 
-## 核心安全规则
+## Core Safety Rules
 
-以下规则**始终有效**，不区分操作类型：
+These rules always apply:
 
-- 禁止在 main/master/production/staging 分支上直接提交或推送
-- 禁止使用 `--force` 推送
-- 禁止跳过 git hooks（`--no-verify`、`--no-gpg-sign`）
-- 禁止一次推送多个不相关任务的改动
-- 禁止提交当前任务范围外的代码变更
-- 禁止使用 `git add -A` / `git add .`，逐文件 `git add`
+- Never commit or push directly on `main`, `master`, `production`, or `staging`.
+- Never use `--force` for pushes.
+- Never bypass Git hooks with `--no-verify` or `--no-gpg-sign`.
+- Never push unrelated tasks together.
+- Never commit changes outside the current task scope.
+- Never use `git add -A` or `git add .`; stage files explicitly.
 
-## 路由
+## Routing
 
-根据用户意图，**先加载对应 rules，再按 workflow 执行**：
+Load the matching rules first, then follow the workflow. Worktree intent takes precedence over ordinary branch intent.
 
-| 命令 | Rules | Workflow | 说明 |
-|------|-------|----------|------|
-| Push（推送 / push / 提交推送 / 上传代码） | `./rules/push.rules.md`、`./rules/commit.rules.md` | `./workflow/push.md` | 前置检查 → 变基 → 提交 → 推送 → MR 链接 |
-| Worktree（工作区 / worktree） | `./rules/branch.rules.md`、`./rules/worktree.rules.md` | `./workflow/worktree.md` | 创建/进入/列表/删除工作区 |
-| Branch（分支 / branch / 创建分支） | `./rules/branch.rules.md` | — | 分支命名与创建规范 |
-| Rebase（变基 / rebase） | `./rules/rebase.rules.md` | — | 通用步骤用已有知识，rules 文件只含项目特定约束 |
-| Stash（贮藏 / stash） | `./rules/stash.rules.md` | — | 通用步骤用已有知识，rules 文件只含命名与清理规范 |
+| User intent | Rules | Workflow | Behavior |
+|---|---|---|---|
+| Push / push-and-commit / upload code | `./rules/push.rules.md`, `./rules/commit.rules.md` | `./workflow/push.md` | Pre-check → rebase → commit → push → MR lookup/link and suggested MR content |
+| Commit only | `./rules/commit.rules.md` | — | Commit only; do not push or prepare an MR link unless explicitly requested |
+| Worktree | `./rules/branch.rules.md`, `./rules/worktree.rules.md` | `./workflow/worktree.md` | Create/enter/list/remove a worktree |
+| Branch | `./rules/branch.rules.md` | — | Branch naming and creation rules |
+| Rebase | `./rules/rebase.rules.md` | — | General Git knowledge plus repository-specific rules |
+| Stash | `./rules/stash.rules.md` | — | Naming and cleanup rules |
 
-## 未匹配命令
+An explicit request to create or update an MR belongs to the project-level MR Skill when one exists. The ordinary Push workflow only prepares MR title, description, duplicate lookup, and a web link; it must not call `glab mr create` or update an MR.
 
-若用户意图不在以上路由中（如 `git log`、`git diff`、`git blame`、`git cherry-pick` 等），
-直接用通用 git 知识处理。**不要**加载 workflow/ 和 rules/ 目录下的文件——它们不适用于这些命令。
+## Unmatched Commands
+
+For intents outside these routes, such as `git log`, `git diff`, `git blame`, or `git cherry-pick`, use general Git knowledge. Do not load unrelated workflow or rules files.
