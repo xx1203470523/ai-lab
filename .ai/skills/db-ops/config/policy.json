@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+
+  "credentialsPath": "%LOCALAPPDATA%/db-ops/credentials.env",
+
+  "environments": {
+    "dev": true,
+    "stag": true,
+    "prod": true
+  },
+
+  "defaultRoute": null,
+  "requireExplicitTarget": true,
+
+  "output": {
+    "defaultFormat": "Table",
+    "maxRows": 200,
+    "maxCellChars": 200,
+    "maxResultBytes": 1048576
+  },
+
+  "temp": {
+    "root": "%TEMP%",
+    "prefix": "db-ops-",
+    "deleteOnExit": true,
+    "maxAgeHours": 24
+  },
+
+  "logging": {
+    "enabled": false,
+    "root": "%LOCALAPPDATA%/db-ops/logs",
+    "format": "jsonl",
+    "storeQueryText": false,
+    "retainDays": 30
+  },
+
+  "credentials": {
+    "requireUserOnlyAcl": true,
+    "aclFailureIsFatal": true,
+    "allowedKeyPattern": "^[A-Z][A-Z0-9_]*_(DB_HOST|DB_PORT|DB_USER|DB_PASS)$",
+    "highPrivilegeUserPattern": "^(root|admin|sa|administrator|dba)$",
+    "storageFormat": "plain"
+  },
+
+  "exec": {
+    "allowWrite": false,
+    "requireDigest": true,
+    "requireTransaction": true,
+    "requireBackup": true,
+    "reserved": true
+  }
+}

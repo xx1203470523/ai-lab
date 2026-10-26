@@ -8,8 +8,10 @@ description: "dbsql 的 MySQL-only、安全和单据点查询底线。"
 
 - 当前只支持 MySQL；不要尝试 SQL Server、PostgreSQL、SQLite、ODBC 或项目内其它数据库工具。
 - 连接配置只从 `~/.claude/skills/dbsql/.env` 读取，除非用户明确给出临时覆盖参数。
-- 默认环境是 `.env` 中的 `DBSQL_DEFAULT_ENV`；当前支持 `dev` 和 `prod`，其中 `prod` 使用原默认生产连接数据。
-- 默认目标数据库是所选环境的 `DB_NAME`；未指定时按所选环境的库名处理，开发环境通常以 `wms_lebg` 作为参考库语义。
+- 默认环境是 `.env` 中的 `DBSQL_DEFAULT_ENV`，当前默认 `dev`；支持 `dev`、`prod.lebg`、`prod.lebgty`、`prod.lebgjs`、`prod.lebgch`、`prod.labg`、`prod.bpbg`、`replica`、`bi`、`logs`、`warehouse` 受控目标。
+- 目标通过 `<TARGET>_DB_HOST/PORT/USER/PASS/NAME` 配置；未配置的正式据点、从库、BI、日志库或立库库必须失败闭合，不得回退主库或任意 `Database`。
+- 账号必须由用户指定并经数据库管理员确认具备只读权限；脚本关键字拦截只是第二道防线，不等于数据库授权。
+- 正式目标必须显式指定；不能把 `prod` 或项目 appsettings 中的默认值当作所有据点配置。
 
 ## Connection Safety
 
@@ -17,6 +19,8 @@ description: "dbsql 的 MySQL-only、安全和单据点查询底线。"
 - 不把密码写进 skill、SQL 文件、task log、命令输出或 Git 可见文件。
 - 执行查询时优先通过 `scripts/dbsql-mysql.ps1`；脚本优先使用 `mysql` CLI，未安装 CLI 时允许使用 Java + DBeaver MySQL JDBC 驱动。
 - CLI 模式使用 `MYSQL_PWD` 临时环境变量，JDBC 模式使用临时进程环境变量传递连接信息；不要把密码放进命令参数。
+- Check 输出隐藏用户名，只显示“configured”；错误信息不得包含密码、完整连接串或动态报表连接密文。
+- `bi` 当前可能是 Oracle，MySQL 脚本不得伪装执行；`report-site` 动态连接不得从 `sys_site` 密文推导。
 
 ## Query Rules
 

@@ -1,1 +1,8 @@
 .claude/settings.local.json
+
+# 本地凭据与运行时状态：只保留在工作区（供 deploy.ps1 部署），禁止入库
+**/.env
+**/.env.*
+!**/.env.example
+**/state/token.json
+**/tmp/

@@ -1,66 +1,83 @@
-# Git Push
+# Git Push 工作流
 
-## 1. 前置检查 (Pre-checks)
+本工作流只负责**编排**。判定与执行由 `scripts/` 下的脚本完成，
+接口与阻断码见 `../reference/scripts/script-contract.md`。
 
-### 环境与分支校验
+## 1. 前置检查
 
-1. 检查当前仓库是否在 git 仓库中
-2. 检查是否有未提交的变更（`git status` 有 modified 或 untracked 文件）
-3. 远程仓库 `origin` 可访问
-4. 检查当前分支不在 main/master/production/staging 上
-5. 检查是否落后远程（main / production），若有冲突需先处理
-
-### 提交内容校验
-
-- 读取 `../reference/push/push.md`，推送前检查推送自定义规范
-- 若有项目自定义规范，读取 `../reference/commit/custom.md`
-
-## 2. 变基检查 (Rebase Check)
-
-提交前检查是否基于远端最新的 main/production，有更新则变基：
-
-```bash
-git fetch origin main
-git rebase origin/main
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File <skill>\scripts\prepush.ps1 `
+    -Action check -Target <目标分支> [-AllowFetch]
 ```
 
-- rebase 冲突时：`git rebase --abort`，向用户报告冲突文件，不盲目强制解决
+1. 一次拿到分支守卫、目标分支解析、与远端的分叉、本地 `main` 合并提交隐患、工作树状态。
+   不要再用零散命令自己拼这些结论。
+2. `-Target` 拿不准就先不带，让脚本走推断；报 `target-branch-unresolved` 时
+   **停下问用户**要并入 `main` 还是 `production`。后续 fetch、rebase、MR 查重必须用同一个目标分支。
+3. 报 `protected-branch` 说明当前就在受保护分支上。此时应引导用户开特性分支，不要原地推送。
+4. 读 `data.localTargetMergeCommits`：大于 0 表示本地集成分支有远端没有的合并提交，
+   变基基准只能是 `refs/remotes/origin/<target>`，不能用本地分支。
+5. 按需读取 `../reference/commit/custom.md`、`../reference/merge-request/custom.md`。
+   保持无关 dirty 文件不变。
 
-## 3. 提交 (Commit)
+## 2. 变基
 
-### 范围控制
-
-仅提交当前对话任务涉及的代码变更。工作区中与当前任务无关的改动不纳入本次提交。
-禁止使用 `git add -A` / `git add .`，逐文件 `git add`。
-
-### 提交信息
-
-提交信息尾部禁止含 `Co-Authored-By:` 和 `🤖 Generated with` 行。
-
-## 4. 推送 (Push)
-
-```bash
-git push -u origin {branch-name}
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File <skill>\scripts\prepush.ps1 `
+    -Action rebase -Target <目标分支> [-AllowFetch]
 ```
 
-推送成功后报告：分支名、提交 hash、推送结果、MR 链接。
+1. 冲突时脚本会**自动 `rebase --abort` 还原**并返回 `rebase-conflict` 与冲突文件清单。
+   把清单报给用户并停下：不自行解决冲突，也不改用 merge 绕过。
+2. 成功后看 `behindTargetAfterRebase`（应为 0）确认真的追平了；
+   `behindTarget` 是变基前的值，别拿它当结果。
+3. 报 `dirty-tree` 时先处理未提交改动（提交或移交），不要 `--force` 或 stash 后硬来。
 
-### 生成 MR 链接
+## 3. 提交
 
-- 运行 `glab mr list --source-branch {branch-name} --output json` 检查是否已有 MR
-- 若已有 MR，直接输出现有 MR 链接
-- 若尚无 MR，输出创建链接：`https://<host>/<project>/-/merge_requests/new?merge_request[source_branch]={branch-name}&merge_request[target_branch]=main`
-- `<host>` 和 `<project>` 从 `glab repo view --output json` 的 `web_url` 提取
-- MR 链接单独一行、醒目展示
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File <skill>\scripts\commit.ps1 `
+    -Action plan -Path <文件1,文件2> -MessageFile <消息文件>
+# 确认无误后
+powershell -NoProfile -ExecutionPolicy Bypass -File <skill>\scripts\commit.ps1 `
+    -Action commit -Path <文件1,文件2> -MessageFile <消息文件>
+```
 
-### MR 描述
+1. 先 `plan` 再 `commit`：把将暂存的路径与标题展示出来，确认是本次任务范围。
+2. **只传本次任务涉及的文件**。脚本会拒绝 `-A`/`.`/`*`/`-u`、通配符、仓库外路径，
+   也会拒绝「列了但没有改动」的路径——这几种情况都要回去重新圈定范围，不要绕过。
+3. 提交信息写成 UTF-8 文件后传 `-MessageFile`。格式 `<type>(<scope>): <中文简述>`；
+   scope 用项目子目录名，type 与 scope 用英文，简述用中文。
+4. 消息末尾**不得**有 `Co-Authored-By:` 或 `🤖 Generated with` 行，脚本会硬拦截。
+   本仓库历史里有他人留下的署名行，属于他们自己的提交，不要照抄。
+5. 标题确实要例外时（比如纯回滚提交），明确说明理由后用 `-AllowNonConventional`。
 
-MR 描述正文尾部禁止含以下行：
+## 4. 推送
 
-- `Co-Authored-By: Claude <noreply@anthropic.com>`
-- `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+```powershell
+git push -u origin <source-branch>
+```
 
-## 3. 异常处理 (Error Handling)
+- 禁止 `--force`、`--no-verify`、`--no-gpg-sign`。
+- 任何一步失败都不要「先推上去再说」；推送是外部可见动作，没把握就停下问用户。
+- 被 non-fast-forward 拒绝时，先确认源分支是否有人协作，优先 rebase 而不是 merge，
+  且必须用第 2 步的脚本，不要手工 `git pull`。
+- 推送成功后报告源分支、提交 hash、推送结果，以及下一步的 MR 结论。
 
-- 执行失败立即停止后续操作，向用户详细说明失败原因
-- 推送被拒（non-fast-forward）：检查是否有人在同分支协作，优先 rebase 而非 merge
+## 5. MR 查重与建议内容
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File <skill>\scripts\mr.ps1 `
+    -Action link -Source <source-branch> -Target <target-branch> [-AllowFetch]
+```
+
+1. 用**第 1 步解析出的同一个目标分支**，不要换一个。
+2. `hasOpenMr` 为真时报告已有 MR 的 Web URL，明确说不要重复创建。
+3. 没有既有 MR 时，用 `data.createUrl`、`data.commits`、`data.diffStat`、
+   `data.suggestedTitle` 组织建议内容，正文遵循 `../reference/merge-request/custom.md`。
+   只写用户需求、commit log、diff 摘要和实际执行过的检查所能证明的事实。
+4. `not-gitlab` 或 `mr-lookup-degraded` 时：说明推送已完成、MR 查询被降级或跳过，
+   **不得编造 URL**，也不要换成 `gh` 去猜。
+5. **本工作流到此结束**。不得调用 `glab mr create`、更新 MR、分配 reviewer、
+   加 label 或改 milestone——包括用户只是说「顺便把 MR 也建了」时：
+   那是另一个需要用户显式请求并确认的动作，不在本工作流范围内。

@@ -1,0 +1,10 @@
+{
+    "spec_id":  "task-spec-20260923-1550-prep-material-report",
+    "project_id":  "http://10.10.80.231:8052/hjh1126123/wms",
+    "project_root":  "D:\\Project\\WMS\\.claude\\worktree\\prep-material-report",
+    "revision":  1,
+    "path":  "C:\\Users\\liyanpeng\\.claude\\skills\\task-spec\\20260923-prep-material-report\\r01",
+    "package_path":  "C:\\Users\\liyanpeng\\.claude\\skills\\task-spec\\20260923-prep-material-report\\r01",
+    "status":  "READY_FOR_APPROVAL",
+    "plan_package_sha256":  "51dc54bea33958babc7d6d427d20a18fea83479b425b85bec4646d02d7f593e7"
+}

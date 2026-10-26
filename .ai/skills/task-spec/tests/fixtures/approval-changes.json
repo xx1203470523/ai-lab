@@ -1,0 +1,10 @@
+{
+  "schema_version":"1.0",
+  "spec_id":"task-spec-test",
+  "package_revision":1,
+  "decision":"CHANGES_REQUESTED",
+  "item_decisions":[],
+  "item_comments":[{"id":"AC-01","comment":"补充验证说明"}],
+  "item_feedback":[{"id":"AC-01","comment":"补充验证说明"}],
+  "statement":"请修改验收说明"
+}

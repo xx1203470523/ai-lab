@@ -1,0 +1,820 @@
+{
+    "schema_version":  "1.0",
+    "plan_package_id":  "task-spec-20260923-1550-prep-material-report-r01",
+    "spec":  {
+                 "spec_id":  "task-spec-20260923-1550-prep-material-report",
+                 "revision":  1,
+                 "path":  null,
+                 "sha256":  null,
+                 "project_id":  "http://10.10.80.231:8052/hjh1126123/wms",
+                 "evidence_baseline":  "Git worktree .claude/worktree/prep-material-report @ branch feature/lyp/prep-material-report, HEAD 3a59b94fc08323eb4ed161b786121fec3c37482f（工作区干净，仅 1 个未跟踪的 knowledge-feedback 候选目录）；需求源 C:/Users/liyanpeng/Desktop/doc/仓库备料综合报表/仓库备料综合报表.xlsx（30,906 B，含 xl/media/image1.png 内嵌截图）；本轮全部代码事实取自该 worktree。"
+             },
+    "package_revision":  1,
+    "status":  "READY_FOR_APPROVAL",
+    "created_at":  "2026-09-23T07:50:02.0000000Z",
+    "request_slug":  "prep-material-report",
+    "folder_name":  "20260923-prep-material-report",
+    "project_root":  "D:\\Project\\WMS\\.claude\\worktree\\prep-material-report",
+    "package_root":  "C:\\Users\\liyanpeng\\.claude\\skills\\task-spec\\20260923-prep-material-report\\r01",
+    "package_path":  "C:\\Users\\liyanpeng\\.claude\\skills\\task-spec\\20260923-prep-material-report\\r01",
+    "supersedes":  null,
+    "source_proposal_sha256":  "1fa52c3d8bd203c73942bddb4dc8a05d5a15e585adefcc2cfb03f19104f159c7",
+    "title":  "仓库备料综合报表（拣料单维度）",
+    "description":  "新增「仓库备料综合报表」页面与导出：以拣料单为基础数据，把 T100 单头备注按 + 分段解析还原为业务字段，并横向拼装备料、转运、领料确认、回单登记四段数据，输出 A–W 共 18 列。",
+    "summary":  {
+                    "goal":  "新增「仓库备料综合报表」列表页 + Excel 导出，一行对应一个由用户确认的统计粒度，展示 A–W 中 18 个可见列，其中 7 列来自 T100 单头备注的 + 分段解析。",
+                    "problem":  "需求只存在于一张 Excel 的取数说明与一张 T100 截图里：4 处段位说明自相矛盾；系统内不存在「模组名称」字段；备料/转运/领料确认/回单登记四段数据分散在 8 张以上表，且「转运」在代码里有三套并存载体。",
+                    "value":  "让 PC 与仓管在一个页面看完备料全链路，替代当前人工把 WMS 数据与 T100 备注对回 Excel 的做法。",
+                    "complexity":  "L3 — 跨后端 Services.Report / Application.Report、前端 AdminUI 页面与菜单 SQL 四层，新增查询契约与导出契约，并引入一条由人工填单习惯决定的数据口径规则。若采纳「同步层物化解析记录表」方向，则升级为 L4（含迁移、回填、对账与不可逆 DDL）。",
+                    "status":  "DRAFT"
+                },
+    "current_state":  {
+                          "facts":  [
+                                        {
+                                            "id":  "F-01",
+                                            "title":  "参考报表实现三件套",
+                                            "evidence":  "IMTC.WMS.AdminWebApi/Services/Services.Report/Services/Implementations/OutStockOrderReportService.cs:9",
+                                            "observation":  "OutStockOrderReportService : IOutStockOrderReportService, ITransient，仅注入 ICachingService 与 IReportDbScopeProvider 两个依赖。"
+                                        },
+                                        {
+                                            "id":  "F-02",
+                                            "title":  "参考报表分页入口",
+                                            "evidence":  "OutStockOrderReportService.cs:30-49",
+                                            "observation":  "GetOrderReportPagedDataAsync：:32 queryDto.Adapt\u003c\u003e()，:35 BuilderMainQuery，:36 ToPageAsync，:38 FillOrderDataAsync。"
+                                        },
+                                        {
+                                            "id":  "F-03",
+                                            "title":  "参考报表无显式排序",
+                                            "evidence":  "OutStockOrderReportService.cs:136-238；Domain/Domain.Shared/Extensions/QueryableExtension.cs:37-48；Query/PagerQuery.cs:37",
+                                            "observation":  "出库综合报表主查询未写 ORDER BY，分页顺序不稳定。属既有缺陷，不应在新报表复刻。"
+                                        },
+                                        {
+                                            "id":  "F-04",
+                                            "title":  "参考报表导出与门禁",
+                                            "evidence":  "OutStockOrderReportService.cs:54-77、:82-96；Services.Report/Services/ReportQueryPolicy.cs:9、:21、:24",
+                                            "observation":  "导出按用户加锁 + CountAsync 上限校验 + 游标分批（ExportMaxRows=500000，ExportBatchSize=100000）；查询时间跨度上限 MaxQueryMonths=3。"
+                                        },
+                                        {
+                                            "id":  "F-05",
+                                            "title":  "参考报表控制器与权限",
+                                            "evidence":  "IMTC.WMS.AdminWebApi/Application/Application.Report/Controllers/OutStockReportController.cs:6、:35-40、:45-51",
+                                            "observation":  "[Route(\"report/outstock\")]，order/page 与 order/export 两个 HttpGet；导出返回 Success(new { path = \"/export/\" + fileName, fileName })。该 Controllers 目录下无任何权限特性。"
+                                        },
+                                        {
+                                            "id":  "F-06",
+                                            "title":  "路由族存在两套并存风格",
+                                            "evidence":  "OutStockReportController.cs:6 vs OutStockShipmentReportController.cs:6、:27、:40、:52",
+                                            "observation":  "旧族 report/\u003cdomain\u003e/{subtype}/{page|export} 与新族 reports/\u003ckebab\u003e/{query|export|enums} 并存；ReceiptReportController.cs:41 是第三种返回 File 字节流的写法。"
+                                        },
+                                        {
+                                            "id":  "F-07",
+                                            "title":  "前端页面与菜单的强耦合",
+                                            "evidence":  "IMTC.WMS.AdminUI/src/views/reports/outstock-order-report/index.vue:41-43；src/store/modules/permission.js:12、:74、:111-120",
+                                            "observation":  "defineOptions({ name: \u0027reports/outstock-order-report/index\u0027 }) 必须与 sys_menu.Component 完全一致，动态路由靠 import.meta.glob + loadView 解析。"
+                                        },
+                                        {
+                                            "id":  "F-08",
+                                            "title":  "前端导出下载契约",
+                                            "evidence":  "IMTC.WMS.AdminUI/src/views/reports/outstock-order-report/index.vue:78-93",
+                                            "observation":  "download(res.data.path, { name: res.data.fileName, hasBase: true, target: \u0027report\u0027 })。"
+                                        },
+                                        {
+                                            "id":  "F-09",
+                                            "title":  "菜单 SQL 契约",
+                                            "evidence":  "sql/publish/v1.3.8.3/2026-09-21_add_outstock_difference_pick_report_menu.sql；同目录 2026-09-15_add_outstock_shipment_report_menu.sql",
+                                            "observation":  "只插入 1 行 sys_menu（MenuType=\u0027C\u0027，Perms=\u0027\u0027，Icon=\u0027table\u0027，IsCache=\u00270\u0027，Visible=\u00270\u0027，Status=\u00270\u0027，IsDeleted=0）；父锚点 MenuType=\u0027M\u0027 AND MenuName IN (\u0027报表管理\u0027,\u0027报表\u0027) 且 COUNT(*)=1，否则 NULL 失败关闭；OrderNum=MAX+1；Path==Component；无 F 按钮行、无 sys_role_menu 写入。"
+                                        },
+                                        {
+                                            "id":  "F-10",
+                                            "title":  "拣料单主表关键字段",
+                                            "evidence":  "IMTC.WMS.AdminWebApi/Domain/Domain.Warehouse/Entities/OutStock/OutStockPickOrder.cs:17、:43、:58、:205、:212、:230",
+                                            "observation":  "OutStockPickOrder（outstock_pick_order）：SyncCode=T100 单号，DeliveryId=出库单 Id，PickOverTime=备料完成时间，HandOverTime=领料完成时间，T100Remark=T100 备注。"
+                                        },
+                                        {
+                                            "id":  "F-11",
+                                            "title":  "拣料明细有真字段，无需截取备注",
+                                            "evidence":  "OutStockPickOrderDetail.cs:18、:46、:84、:248、:254、:269",
+                                            "observation":  "outstock_pick_order_detail 上 SyncCode、ProjectNo、ModuleNo（作业编码/模组号）、BatchNo、PickUser（拣料人）均为真实列；ProjectNo/ModuleNo 在 detail_piece 与 label 上也有冗余真字段。"
+                                        },
+                                        {
+                                            "id":  "F-12",
+                                            "title":  "系统内不存在「模组名称」字段",
+                                            "evidence":  "全仓 Grep 模组名称|ModuleName 后：仅命中 LowCode 元数据 GenTable.cs:52",
+                                            "observation":  "有界搜索后未找到任何业务「模组名称」字段或主数据表。该列只能来自备注解析。"
+                                        },
+                                        {
+                                            "id":  "F-13",
+                                            "title":  "备料人现网一律英文逗号拼接",
+                                            "evidence":  "OutStockOrderReportService.cs:409；OutStockDifferencePickReportService.cs:462；OutStockDetailReportService.cs:523；OutStockShipmentReportService.cs:399-412",
+                                            "observation":  "多值字段统一使用 string.Join(\",\", …Distinct())；全仓未发现用分号拼接备料人的写法。"
+                                        },
+                                        {
+                                            "id":  "F-14",
+                                            "title":  "备料人/领料人来源字段",
+                                            "evidence":  "OutStockPickOrderDetail.cs:269；OutStockReceiveDetail.cs:256、:263；OutStockOrderReportService.cs:416-421",
+                                            "observation":  "备料人=明细 PickUser；领料确认完成时间=outstock_receive_detail.ReceiveOverTime，领料人=ReceiveUser；报表侧口径为 Max(ReceiveOverTime) + ReceiveUser 去重拼接。"
+                                        },
+                                        {
+                                            "id":  "F-15",
+                                            "title":  "「转运/物料配送」存在三套并存载体",
+                                            "evidence":  "WarehouseDelivery/OutStockWarehouseDelivery.cs:13、:43、:79；DeliveryHandover/OutStockDeliveryHandover.cs:15、:51、:129；Operations/OperationsOrderDelivery.cs:10 与 OperationsOrderDeliveryDetail.cs:69",
+                                            "observation":  "(a) outstock_warehouse_delivery，键 OutStockPickOrderId，配送完成时间 ConfirmOn；(b) outstock_delivery_handover，键 OutStockDeliveryId，提交时间 SubmitOn；(c) operations_order_delivery，键明细 PickOrderId，DeliveryOn/ConfirmOn。三者语义重叠、都是现役表。"
+                                        },
+                                        {
+                                            "id":  "F-16",
+                                            "title":  "参考报表对三者都有取值",
+                                            "evidence":  "OutStockOrderReportService.cs:256-287、:349-377（单据配送）、:383-392（仓库配送单 CompleDeliveryTime=ConfirmOn）、:394-400（配送交接 SubmitOn）",
+                                            "observation":  "出库综合报表同时展示三类配送时间，说明「物料配送」一词在项目中并不唯一指向某一张表。"
+                                        },
+                                        {
+                                            "id":  "F-17",
+                                            "title":  "回单登记按「人」建单、按源单登记明细",
+                                            "evidence":  "Services.Warehouse/…/OperationsOrderReturnRegistrationService.cs:213-214、:511、:536、:547、:473-475；OperationsOrderReturnRegistrationDetail.cs:11、:12",
+                                            "observation":  "主表 RegistrationEntityType=(EDeliveryEntityType)2（人员）、RegistrationEntityCode=工号，即回单主体是一张工号；明细 BuildPickSnapshotAsync 写入 PickOrderId=拣料单 Id，并有 idx_PickOrderId/idx_SourceOrderCode 索引；确认后 Status=BusinessCompleted。按拣料单反查「是否已收回」可行。"
+                                        },
+                                        {
+                                            "id":  "F-18",
+                                            "title":  "T100Remark 的两个写入点口径不一致",
+                                            "evidence":  "Services.Warehouse/…/OutStockDeliverySyncService.cs:581；Services.Warehouse/…/OutStockPickOrderCreationService.cs:495-496、:228；OutStockDeliveryPostServcie.cs:186、:257、:524-525",
+                                            "observation":  "补生成拣料单链路（:581）写 T100Remark = delivery.Remark；主同步链路（:495）写 pickOrder.T100Remark = delivery.T100Remark，而出库单的 T100Remark 只被过账链路写入「过账结果」，新建出库单时为空。两条链路取值口径不一致。"
+                                        },
+                                        {
+                                            "id":  "F-19",
+                                            "title":  "项数在参考报表中的口径",
+                                            "evidence":  "OutStockOrderReportService.cs:408（item.ItemQuantity = pickOrderDetails.Count()），同文件 :252-254、:344",
+                                            "observation":  "既有「项数」= 该拣料单的拣料明细行数（按 PickOrderId 分组计数），非去重物料数。"
+                                        },
+                                        {
+                                            "id":  "F-20",
+                                            "title":  "无三元组分组先例",
+                                            "evidence":  "全仓 Grep GroupBy 后：仅有 {DeliveryNo, ProjectNo}（MaterialPrepareListService.cs:361）、{MaterialCode, ProjectNo} 等单键或双键组合",
+                                            "observation":  "不存在 SyncCode + ProjectNo + ModuleNo 三元组的现成分组统计实现。"
+                                        },
+                                        {
+                                            "id":  "F-21",
+                                            "title":  "需求源结构与截图",
+                                            "evidence":  "仓库备料综合报表.xlsx 第 1 行（列名 A–W）、第 6 行（取数说明）、第 7/8/10 行（补充说明）；xl/media/image1.png",
+                                            "observation":  "截图是 T100「工单成套发料维护作业(asft311)」备注页签，营运据点=苏海_锂电(LEBGJS)，备注样例「李怡静+WA41+1.5北区+卷绕头模组-聂元克+李想+8月5号+第三批」，按 + 切分为 7 段；第 4 段内部含一个 -。"
+                                        },
+                                        {
+                                            "id":  "F-22",
+                                            "title":  "上一轮对备注命中率的实测（据点不匹配）",
+                                            "evidence":  "上一轮只读勘察对 prod.lebgjm 库的统计",
+                                            "observation":  "outstock_pick_order 共 344,850 行，T100Remark 为空 33,703 行（9.8%），含 + 的仅 206 行（0.06%）且均为公差/电话等偶然出现，无一符合截图结构。该库据点 (LEBGJM) 与报表目标据点 (LEBGJS) 不同，故不能据此推断目标据点命中率。"
+                                        },
+                                        {
+                                            "id":  "F-23",
+                                            "title":  "拣料单上已有备料时间冗余列先例",
+                                            "evidence":  "OutStockPickOrder.cs:193、:199、:205；logs/_entries/2026-06-26_151615_综合报表扫描时间冗余字段.md；logs/_entries/2026-07-14_193000_拣料时间统一为备料时间.md",
+                                            "observation":  "PickStartTime/PickEndTime/PickOverTime 已作为备料阶段时间沉淀在拣料单主表；「备料」列命名口径已在历史任务中统一。"
+                                        },
+                                        {
+                                            "id":  "F-24",
+                                            "title":  "导出 DTO 的字段标注约定",
+                                            "evidence":  "Services.Report/…/OutStockOrderReportExportDto.cs:11、:24、:43、:109、:134、:147、:242、:249",
+                                            "observation":  "导出 DTO 用 [DisplayName] + [ExcelFormat] + [ExcelIgnore]；展示 DTO 只用 XML \u003csummary\u003e。参考实现存在重复 [DisplayName]（:173/:179、:198/:204）导致导出表头重复的既有缺陷。"
+                                        },
+                                        {
+                                            "id":  "F-25",
+                                            "title":  "作用域获取约束",
+                                            "evidence":  "OutStockOrderReportService.cs:9-23 及各方法内取 IReportDbScopeProvider.GetScope() 的写法",
+                                            "observation":  "必须在每个方法内部获取 SqlSugarScopeProvider；跨方法传递 provider 会破坏全局 IDeletedFilter。这是本项目报表层的既有约束。"
+                                        }
+                                    ],
+                          "known_gaps":  "1) 目标据点 LEBGJS（苏海_锂电）的真实备注分布未取样：.env 无 PROD_LEBGJS_* 路由，本地无法连接。\n2) 「模组名称」无任何主数据或字段可查（F-12），只能来自备注解析。\n3) 拣料单主表与明细均无仓库字段，库位编码/名称仅存在于 outstock_pick_order_label。\n4) 明细无 WarehouseKeeper 真字段（仅遗留视图与裸 SQL 引用）。\n5) 拣料单无「同步时间」列，只有 SyncStatus 标志位；T100 侧创建时间落在 OutStockDelivery.MakeDate。\n6) 回单登记 PDA 功能是否已覆盖全部备料单据、覆盖率多少，未有数据。"
+                      },
+    "target_state":  {
+                         "explicit_requirements":  "R-01 新增页面 + 导出，列 A–W 共 18 列可见，取数口径以需求 Excel 第 6 行为准。\nR-02 A 收到单据时间 = 取单据配送时间。\nR-03 B 负责PC = T100 单头备注第 1 个字段。\nR-04 C 单据编号 = T100 单号（BillNo）。\nR-05 D 项目名称 = T100 单据明细项目号（ProjectNo）。\nR-06 E 模组号 = T100 单据明细模组号（ModuleNo）。\nR-07 F 模组名称 = 取 T100 单头备注第 X 个字段（X 未填）。\nR-08 G 特殊说明、O 修正下料时间、W 单据回收异常原因：不展示。\nR-09 H 单据备注 = T100 单据备注。\nR-10 I 项数 = 单号/项目号/模组对应的项数统计。\nR-11 J 总装/部装 = + 号后第 1 个；K 接收人 = 第 2 个；L 接收位置 = 第 3 个。\nR-12 M 批次 = 第 5 个字段；N 开单下料时间 = 第 5 个字段。\nR-13 P 是否收回 = 回单登记（Excel 第 10 行标注为 PDA 新增功能）。\nR-14 Q 备料完成日期 = WMS 备料完成时间；R 备料人 = WMS 备料人（多个，分号拼接）。\nR-15 S 转运下料时间 = WMS 物料配送→配送完成时间；T 转运人 = WMS 物料配送→配送人。\nR-16 U 清点日期 = WMS 领料确认完成时间；V 清点人 = WMS 领料确认人。\nR-17 备注派生字段只用于展示，不为其增加搜索条件；只新增一个 T100 全模糊匹配搜索条件。\nR-18 基础数据来源是拣料单；其他可参考出库综合报表。",
+                         "inferences":  [
+                                            {
+                                                "id":  "I-01",
+                                                "based_on":  "F-12 + F-21 + R-07",
+                                                "inference":  "F 模组名称无系统字段，唯一可取来源是备注段位；按截图样例第 4 段「卷绕头模组-聂元克」形态推断 X=4，且该段需按 - 再拆为「模组名称 / 姓名」两截。",
+                                                "confidence":  "medium",
+                                                "falsifier":  "若后续出现模组主数据表，或出现第 4 段不含 - 的实际备注样例。"
+                                            },
+                                            {
+                                                "id":  "I-02",
+                                                "based_on":  "F-21 + R-12",
+                                                "inference":  "M 批次与 N 开单下料时间同时写「第 5 个字段」必有一处笔误；按段序语义推断 N=第 6 段（8月5号）、M=第 7 段（第三批）。",
+                                                "confidence":  "medium",
+                                                "falsifier":  "用户确认另一种映射，或出现段数与样例不同的实际数据。"
+                                            },
+                                            {
+                                                "id":  "I-03",
+                                                "based_on":  "F-21 + R-03 + R-11",
+                                                "inference":  "B 负责PC 与 J 总装/部装同时写「第 1 个字段」必有一处笔误；B=第 1 段（李怡静）与样例人名语义相符，故 J 应指向其他段位（第 2 段「WA41」语义不符，需用户指明）。",
+                                                "confidence":  "low",
+                                                "falsifier":  "用户给出 J 的目标段位或新的备注样例。"
+                                            },
+                                            {
+                                                "id":  "I-04",
+                                                "based_on":  "F-21 + R-09",
+                                                "inference":  "H「T100 单据备注」与 B/F/J/K/L/M/N 引用的「单头备注」很可能同源，即拣料单 T100Remark 整串原文；H 展示整串、其余列展示切分后的分段。",
+                                                "confidence":  "medium",
+                                                "falsifier":  "用户说明 H 取的是明细行备注而非单头备注。"
+                                            },
+                                            {
+                                                "id":  "I-05",
+                                                "based_on":  "R-10 + R-01",
+                                                "inference":  "若一行等于一条拣料明细行，「项数」将恒为 1 而无意义；因此行粒度应为 单号 × 项目号 × 模组号 的分组级。",
+                                                "confidence":  "medium",
+                                                "falsifier":  "用户确认行粒度为「一条拣料单一行」或「一条明细一行」。"
+                                            },
+                                            {
+                                                "id":  "I-06",
+                                                "based_on":  "F-22",
+                                                "inference":  "备注 + 分段是据点自定义填单习惯而非系统保证；目标据点 LEBGJS 的实际命中率可能与 LEBGJM 完全不同，必须实测后才能评估本报表可用性。",
+                                                "confidence":  "medium",
+                                                "falsifier":  "在 LEBGJS 取样后得到高命中率。"
+                                            },
+                                            {
+                                                "id":  "I-07",
+                                                "based_on":  "F-18 + F-10",
+                                                "inference":  "主同步链路写入的 OutStockPickOrder.T100Remark 取自 delivery.T100Remark，而该字段新建出库单时为空，因此报表依赖的备注可能在真实数据里大面积为空。",
+                                                "confidence":  "medium",
+                                                "falsifier":  "取样发现拣料单 T100Remark 实际填充率较高（说明数据主要由补生成链路产生）。"
+                                            }
+                                        ]
+                     },
+    "behavior":  {
+                     "normal":  "用户在报表页选择时间范围（沿用既有门禁，上限 3 个月），可选填 T100 全模糊关键字，点击查询 → 后端以拣料单为主表分页返回，每行按 D-05 确认的粒度聚合，18 列按冻结的段位规则与四段业务数据拼装完成 → 页面表格展示；点击导出 → 后端按用户加锁并分批生成 Excel，前端以 target:\u0027report\u0027 下载。",
+                     "failure":  "备注为空或段位不足 → 该行对应的备注派生列留空，其余列照常返回，查询不报错、不丢行。备注中存在全角 ＋ 或多余空格 → 按半角 + 精确切分，未命中则视为段位不足，同样留空（不做智能纠错，保证可解释）。",
+                     "duplicate_retry":  "同一用户重复点击导出 → 复用既有按用户加锁机制，重复请求被拒绝或串行执行；游标分批导出中途失败 → 不产生半截文件对外暴露，沿用参考实现的 HandleExcelHepler 临时文件 + 完成后再回调路径的既有约定。",
+                     "boundary":  "查询跨度超过 3 个月或导出行数超过上限 → 返回既有门禁错误文案，不静默截断数据。该拣料单在回单登记中无记录 → P 是否收回按 D-08 确认的口径展示（空 or 未收回），不与「已登记未确认」混淆。同一 (单号, 项目号, 模组号) 分散在多条拣料单时 → 按 D-05 粒度决定是合并为一行还是各自成行。",
+                     "consistency":  "本期只读：不写入拣料单、出库单、领料单、回单登记等任何业务表，不新增定时任务，不修改既有报表实现。备注解析在查询期内存完成，不落库、不缓存，因此不存在与源数据不一致的窗口。",
+                     "permissions":  "沿用参考实现的现状：不给新控制器加权限特性，不写 sys_role_menu，页面可见性由 sys_menu 行本身控制（与出库综合报表一致）。"
+                 },
+    "business_rules":  {
+                           "confirmed":  "B-01 备注解析对象为拣料单 T100 备注（OutStockPickOrder.T100Remark）整串，按半角 + 切分为段位数组 — Source: R-03/R-11/R-12 联合 + F-21 样例结构。\nB-02 段位不足时对应列留空，不报错、不阻塞、不丢行 — Source: 备注为人工填写，缺段是常态（合理推断，非 Inference 冒充规则，见 D-06 待确认展示口径）。\nB-03 多值字段（备料人/转运人/清点人）按分号拼接并去重 — Source: 需求 Excel 第 7 行明确「多个，分号拼接」；注意与现网一律逗号先例不一致（F-13），差异已记录在 K-08。\nB-04 沿用既有查询门禁：时间跨度上限 3 个月、导出行数上限 500000、导出分批 100000 — Source: F-04。\nB-05 C/E/D 三列直接取真实字段（SyncCode / ModuleNo / ProjectNo），不经过备注解析 — Source: F-10/F-11 与 R-04/05/06。\nB-06 Q/R 两列取拣料单备料字段，U/V 取领料确认字段，P 取回单登记 — Source: F-10/F-14/F-17 与 R-13/14/16。",
+                           "constraints":  "C-01 必须在每个方法内部获取 IReportDbScopeProvider.GetScope()，不得跨方法传递 SqlSugarScopeProvider（会破坏全局 IDeletedFilter）— Source: F-25。\nC-02 本期只读，禁止写入任何业务表 — Source: R-17 展示型需求 + 用户明确「先出方案不动业务代码」的边界。\nC-03 新增文件的 sys_menu.Component 必须与前端 defineOptions name 完全一致（Path==Component，A 型）— Source: F-07/F-09。\nC-04 不得修改既有报表实现文件（OutStockOrderReportService 等），避免回归 — Source: 参考实现是现网在跑代码。\nC-05 不手写 approval.html，不手工编辑 logs/INDEX.md，不新增权限特性 — Source: task-spec 契约 + F-05 + task-log 规则。\nC-06 查询必须显式排序，不得复刻参考实现的无 ORDER BY 缺陷 — Source: F-03。"
+                       },
+    "scope":  {
+                  "in_scope":  "1) 服务层：新增展示 DTO、查询 DTO、导出 DTO、服务接口、服务实现（含备注分段解析与四段业务数据批量补齐）。\n2) 应用层：新增报表控制器（路由族归属见 D-11）。\n3) 前端：新增 src/api/reports/\u003cx\u003e.js、src/views/reports/\u003cx\u003e/index.vue、schemas.tsx、typings.d.ts。\n4) 数据库：sql/publish/v1.3.8.3/ 下一份菜单插入脚本 + sql/logs/2026-09-23/ 变更说明 + sql/index.md 追加一行。\n5) 任务日志与 logs/_entries 片段。",
+                  "out_of_scope":  "1) PDA 端任何改动：P 列所依赖的「回单登记 PDA 功能」已存在（F-17），本报表只读消费，不新增、不修改 PDA 功能。\n2) 拣料单/出库单/领料单的写链路与 T100 同步链路（含 F-18 的 T100Remark 口径不一致问题）——除非 D-07 选择方案 B，否则本报表不得改同步代码。\n3) 历史数据回填与备注补录。\n4) 模组主数据建设（F-12 的缺口不在本期解决，模组名称只从备注取）。\n5) T100 侧填单习惯治理：不推动业务方改备注格式。\n6) 既有报表的任何重构（含 F-03 无 ORDER BY、F-24 重复表头等既有缺陷，仅记录不修）。\n7) 权限体系改造。"
+              },
+    "risks":  [
+                  {
+                      "id":  "K-01",
+                      "title":  "备注分段是据点习惯，目标据点命中率未知",
+                      "trigger":  "LEBGJS 的实际备注并不遵循 + 分段约定，或分段数不足",
+                      "impact":  "B/F/J/K/L/M/N 七列大面积留空，报表核心价值落空",
+                      "level":  "high",
+                      "mitigation":  "上线前必须在 LEBGJS 取样统计：备注非空率、含 + 率、段数分布、各段取值样例。此为 Go/No-Go 前置证据。",
+                      "decision_needed":  "yes"
+                  },
+                  {
+                      "id":  "K-02",
+                      "title":  "拣料单 T100Remark 可能大面积为空",
+                      "trigger":  "F-18 的两条写入链路口径不一致，主链路写入的是出库单上恒为空的字段",
+                      "impact":  "即使填单规范正确，报表也没有数据可解析",
+                      "level":  "high",
+                      "mitigation":  "与 K-01 同批取样：同时统计 outstock_pick_order.T100Remark 非空率，并与 outstock_delivery.Remark 交叉比对，确认实际数据由哪条链路产生；若主链路为空需另立任务修复同步口径（本期范围外）。",
+                      "decision_needed":  "yes"
+                  },
+                  {
+                      "id":  "K-03",
+                      "title":  "无法本地验证目标据点数据",
+                      "trigger":  ".env 无 PROD_LEBGJS_* 连接路由",
+                      "impact":  "AC 中依赖真实数据的验证项无法在本地完成，只能靠用户/DBA 取样",
+                      "level":  "medium",
+                      "mitigation":  "由用户提供 LEBGJS 备注取样结果作为附件证据；本地验证以构造样例驱动（AC-03 用截图样例断言）。",
+                      "decision_needed":  "yes"
+                  },
+                  {
+                      "id":  "K-04",
+                      "title":  "四处段位冲突必错其一",
+                      "trigger":  "需求文本自相矛盾（M/N 同段、B/J 同段、F 的 X 空缺、H 与单头备注归属）",
+                      "impact":  "实现必然与业务预期不符，属于返工而非缺陷",
+                      "level":  "high",
+                      "mitigation":  "D-01..D-04 全部标记 blocking: true，未确认前不得进入实现。",
+                      "decision_needed":  "yes"
+                  },
+                  {
+                      "id":  "K-05",
+                      "title":  "行粒度选错导致整体重构",
+                      "trigger":  "D-05 选择与实现不一致",
+                      "impact":  "主查询分组、项数语义、导出结构、前端表格全部需要重做",
+                      "level":  "high",
+                      "mitigation":  "D-05 标记 blocking: true，在实现前冻结。",
+                      "decision_needed":  "yes"
+                  },
+                  {
+                      "id":  "K-06",
+                      "title":  "「转运」在三张表间语义重叠",
+                      "trigger":  "S/T 列选错载体表（F-15 三套并存）",
+                      "impact":  "转运时间/转运人两列取到错误业务段，且与出库综合报表口径不一致",
+                      "level":  "medium",
+                      "mitigation":  "D-09 给出推荐并请用户确认；实现时在代码注释中写明所选表与字段来源，便于 review 反驳。",
+                      "decision_needed":  "yes"
+                  },
+                  {
+                      "id":  "K-07",
+                      "title":  "回单登记按人建单导致覆盖不全",
+                      "trigger":  "F-17：回单主体是工号，明细才关联拣料单，未登记的单据无从反查",
+                      "impact":  "P 是否收回大面积为空，用户可能误读为「未收回」",
+                      "level":  "medium",
+                      "mitigation":  "D-08 明确空值展示口径（空 vs 未收回）；建议展示为空以避免把「未登记」误判成「未收回」。",
+                      "decision_needed":  "yes"
+                  },
+                  {
+                      "id":  "K-08",
+                      "title":  "分号拼接与现网逗号先例不一致",
+                      "trigger":  "需求 Excel 要求分号，现网所有报表用逗号（F-13）",
+                      "impact":  "同一字段在不同报表里分隔符不同，下游二次加工需特判",
+                      "level":  "low",
+                      "mitigation":  "按需求执行分号（已在 D-10 auto-resolved 记录依据）；若用户认为应统一为逗号，在审批页直接改写该 Decision。",
+                      "decision_needed":  "no"
+                  },
+                  {
+                      "id":  "K-09",
+                      "title":  "复刻参考实现的既有缺陷",
+                      "trigger":  "照抄 OutStockOrderReportService 的无 ORDER BY、重复 [DisplayName]、1900-01-01 清洗样板、QueryDto/PagedQueryDto 重复",
+                      "impact":  "新报表继承分页不稳、导出表头重复等问题",
+                      "level":  "medium",
+                      "mitigation":  "C-06 强制显式排序；Reference Code Assessment 已逐项标注 do-not-reuse；review 阶段按该表逐条核对。",
+                      "decision_needed":  "no"
+                  },
+                  {
+                      "id":  "K-10",
+                      "title":  "方案 B 若被选中则复杂度升级",
+                      "trigger":  "D-07 选择「同步层物化解析记录表」",
+                      "impact":  "需要 DDL、历史回填、对账、回滚策略，复杂度由 L3 升为 L4，本 Plan Package 的前提（只读、无迁移）失效",
+                      "level":  "medium",
+                      "mitigation":  "本 Spec 默认按方案 A 编写；若选 B 必须另开 r02 revision 并补充迁移/回滚/对账章节，不得在 r01 上直接实现。",
+                      "decision_needed":  "yes"
+                  }
+              ],
+    "technical_direction":  {
+                                "contract_boundary":  "新增独立报表契约，不改动既有报表接口。后端新增展示 DTO（仅 XML summary）+ 查询 DTO + 导出 DTO（[DisplayName]/[ExcelFormat]/[ExcelIgnore]）；控制器路由族归属见 D-11，推荐对齐较新的 reports/\u003ckebab\u003e/{query|export} 风格而非旧族 report/\u003cdomain\u003e/{subtype}/{page|export}。导出沿用「返回相对路径 + 文件名，由前端 download 下载」的既有契约，不采用 File 字节流写法。",
+                                "state_data_direction":  "以拣料单（outstock_pick_order）为主表，LeftJoin 出库单（a.DeliveryId == b.Id，与参考实现同路径以保持口径），主查询内用 EXISTS 子查询完成粗粒度过滤，分页后在 FillXxxDataAsync 阶段按主键批量补齐四段数据：备料（拣料单自身字段）、转运（F-15 三表之一，按 D-09 冻结）、领料确认（outstock_receive_detail）、回单登记（operations_order_return_registration_detail + 主表状态）。备注解析在补齐阶段对已批量取回的 T100Remark 做内存 Split(\u0027+\u0027)，不落库、无迁移、完全可逆。",
+                                "option_a_query_time_parse":  "方案 A（默认，推荐）：查询期内存解析。优点是不动数据模型、无迁移、口径可随规则调整立即生效、失败可回退；缺点是每次查询都要解析，且无法对解析质量做持久化巡检。对一张上限 3 个月、导出上限 50 万行的报表，解析开销与字符串切分同量级，可接受。",
+                                "option_b_materialized_table":  "方案 B（备选，需用户明确选择）：新增解析记录表（单据 Id、同步单号、解析出的各字段、ParseStatus、ParseRuleVersion），在 T100 出库单据同步时落库，报表改为关联查询。优点是可做质量巡检、可回填、查询更快；前置条件是段位规则先定死（即 D-01..D-04 必须先有结论），否则 ParseRuleVersion 会随规则反复变更，且需要 DDL、历史回填、对账与回滚方案，复杂度升级为 L4。本 revision 不按此方案实现。",
+                                "dependency_order":  "冻结 D-01..D-05（blocking）→ 冻结 D-06..D-11 → 后端契约与服务实现（含取样驱动的手工验证）→ 前端页面与 schema → 菜单 SQL 与文档 → 集成核对（Component/name 一致性、导出列与页面列一致性）。",
+                                "candidate_code_anchors":  "主查询与批量补齐骨架：Services/Services.Report/Services/Implementations/OutStockOrderReportService.cs:136-238、:243-446；明细级三段式时间列的最贴近实现：同目录 OutStockDifferencePickReportService.cs；新路由族写法：Application/Application.Report/Controllers/OutStockShipmentReportController.cs:6、:27、:40、:52；门禁常量：Services.Report/Services/ReportQueryPolicy.cs；前端页面结构：IMTC.WMS.AdminUI/src/views/reports/outstock-order-report/{index.vue,schemas.tsx,typings.d.ts}；菜单脚本：sql/publish/v1.3.8.3/2026-09-21_add_outstock_difference_pick_report_menu.sql。",
+                                "style_contract":  "PROJECT + PERSONAL — 遵循 AdminWebApi（SqlSugar + Mapster + ITransient + IReportDbScopeProvider）、Application.Report 控制器、AdminUI（Vue3 + @/lebg/components + useTable + FormSchema/TableColumn）三层既有结构与命名习惯；复用既有全局 DateTimeJsonConverter，不为日期列单写 formatter。",
+                                "note":  "本节只收敛实现方向与契约边界，不写方法级步骤、伪代码或完整代码实施 Plan。"
+                            },
+    "reference_code_assessment":  [
+                                      {
+                                          "id":  "REF-01",
+                                          "reference":  "Services/Services.Report/Services/Implementations/OutStockOrderReportService.cs",
+                                          "similarity":  "同域同层同形态：拣料单为主表 + 出库单 LeftJoin + 多段批量补齐 + 分页 + 分批导出",
+                                          "reusable":  "整体骨架（BuilderMainQuery / ToPageAsync / FillOrderDataAsync / EnumerateExportRows 游标循环）、按用户加锁的导出、门禁校验、批量补齐时的 ToLookup/ToDictionary 与 DistinctBy/MaxBy 聚合写法、1900-01-01 之外的空值处理思路",
+                                          "do_not_reuse":  "无 ORDER BY 的分页（F-03）；重复 [DisplayName] 导致导出表头重复（:173/:179、:198/:204）；QueryDto 与 PagedQueryDto 90% 重复且已漂移；错误文案里硬编码 /10000；1900-01-01 清洗样板",
+                                          "quality":  "现网在跑的主力报表，逻辑完整但带有历史堆积；属可参考但不宜照抄的实现",
+                                          "architecture_fit":  "高：与目标报表同层同域，依赖注入与作用域获取方式可直接沿用",
+                                          "style_fit":  "高：DTO/服务/控制器/前端四层命名与组织结构都可对齐"
+                                      },
+                                      {
+                                          "id":  "REF-02",
+                                          "reference":  "Services/Services.Report/Services/Implementations/OutStockDifferencePickReportService.cs",
+                                          "similarity":  "同为明细级备料/领料/配送多段时间列的实现，且已有备料人在明细为空时回退整单拼接的处理",
+                                          "reusable":  "明细级备料人/领料人/配送人多值聚合与去重的写法（:462、:469-479）",
+                                          "do_not_reuse":  "同样缺少稳定排序；多值拼接用逗号（与 B-03 要求的分号相反）",
+                                          "quality":  "较新，结构比 REF-01 清爽",
+                                          "architecture_fit":  "高",
+                                          "style_fit":  "高"
+                                      },
+                                      {
+                                          "id":  "REF-03",
+                                          "reference":  "Application/Application.Report/Controllers/OutStockShipmentReportController.cs:6、:27、:40、:52",
+                                          "similarity":  "较新的路由族 reports/\u003ckebab\u003e/{query|export|enums}，代表项目正在演进的方向",
+                                          "reusable":  "路由命名与动词选择，作为 D-11 的推荐依据",
+                                          "do_not_reuse":  "同目录 ReceiptReportController.cs:41 返回 File 字节流的写法——与前端既有 download(path/fileName) 契约不兼容",
+                                          "quality":  "新",
+                                          "architecture_fit":  "高，代表未来方向",
+                                          "style_fit":  "高"
+                                      },
+                                      {
+                                          "id":  "REF-04",
+                                          "reference":  "sql/publish/v1.3.8.3/2026-09-21_add_outstock_difference_pick_report_menu.sql",
+                                          "similarity":  "同一目标：为一张新报表插入菜单行",
+                                          "reusable":  "完整脚本形态（父锚点 COUNT(*)=1 的失败关闭校验、OrderNum=MAX+1、Path==Component、无 F 按钮、无 sys_role_menu）",
+                                          "do_not_reuse":  "候选雪花 Id 需按本期日期重编，不得沿用旧 Id",
+                                          "quality":  "新，且已在本分支 v1.3.8.3 目录内，是最贴近同时也最新的先例",
+                                          "architecture_fit":  "高",
+                                          "style_fit":  "高"
+                                      },
+                                      {
+                                          "id":  "REF-05",
+                                          "reference":  "IMTC.WMS.AdminUI/src/views/reports/outstock-order-report/{index.vue,schemas.tsx,typings.d.ts}",
+                                          "similarity":  "同一形态：搜索区 + 表格 + 导出按钮",
+                                          "reusable":  "useTable 用法、导出 download(res.data.path,{name,hasBase:true,target:\u0027report\u0027})、schemas.tsx 的 getSearchSchema/getTableSchema 结构与 formatXxx 辅助函数位置、defineOptions name 约定",
+                                          "do_not_reuse":  "日期列无需自定义 formatter（全局 DateTimeJsonConverter 已处理）",
+                                          "quality":  "新",
+                                          "architecture_fit":  "高",
+                                          "style_fit":  "高"
+                                      },
+                                      {
+                                          "id":  "REF-06",
+                                          "reference":  "Services/Services.Warehouse/Services/Implementations/Operations/OperationsOrderReturnRegistrationService.cs:511、:536、:547",
+                                          "similarity":  "回单登记与拣料单的关联路径定义处",
+                                          "reusable":  "按拣料单反查回单的键（detail.PickOrderId）与「已收回」判定（主表 Status=BusinessCompleted）",
+                                          "do_not_reuse":  "该服务是写入方；本报表只读其表，不调用其写方法",
+                                          "quality":  "新",
+                                          "architecture_fit":  "中：跨服务域读表，需直接查表而非依赖该服务",
+                                          "style_fit":  "中"
+                                      }
+                                  ],
+    "open_decisions":  [
+                           {
+                               "id":  "D-01",
+                               "question":  "M 批次 与 N 开单下料时间 在需求 Excel 中都写「+ 号后的第 5 个字段」，必有一处笔误。正确的段位分别是？",
+                               "options":  "A) N=第 6 段（8月5号）、M=第 7 段（第三批）—— 按段序语义推断；B) 两者都取第 5 段；C) 其他映射（请在意见中写明）",
+                               "recommendation":  "A（推断 I-02）",
+                               "resolution":  "user-required",
+                               "blocking":  true,
+                               "impact":  "M/N 两列取值；错则该两列全错",
+                               "source":  "需求 Excel 第 6 行",
+                               "based_on":  "F-21, I-02"
+                           },
+                           {
+                               "id":  "D-02",
+                               "question":  "B 负责PC 与 J 总装/部装 都写「第 1 个字段」。按样例 B 应为第 1 段「李怡静」，那 J 总装/部装取第几段？",
+                               "options":  "A) B=第 1 段，J=第 ? 段（请指明；第 2 段「WA41」语义与总装/部装不符）；B) 其他（请在意见中写明）",
+                               "recommendation":  "需用户指明 J 的段位（推断 I-03 置信度低，无法自行收敛）",
+                               "resolution":  "user-required",
+                               "blocking":  true,
+                               "impact":  "B/J 两列取值",
+                               "source":  "需求 Excel 第 6 行",
+                               "based_on":  "F-21, I-03"
+                           },
+                           {
+                               "id":  "D-03",
+                               "question":  "F 模组名称 写「取 T100 单头备注第 X 个字段」，X 未填；且截图第 4 段「卷绕头模组-聂元克」内部含一个 -。X 取几，且该段是否再拆？",
+                               "options":  "A) X=4，段内按 - 再拆为「模组名称=卷绕头模组 / 姓名=聂元克」（推断 I-01）；B) X=4 但整段不拆，展示为「卷绕头模组-聂元克」；C) 其他（请在意见中写明）",
+                               "recommendation":  "A（推断 I-01；系统内无「模组名称」字段，F-12 已排除其他来源）",
+                               "resolution":  "user-required",
+                               "blocking":  true,
+                               "impact":  "F 列取值与是否新增一个衍生列",
+                               "source":  "需求 Excel 第 6 行 + 内嵌截图",
+                               "based_on":  "F-12, F-21, I-01"
+                           },
+                           {
+                               "id":  "D-04",
+                               "question":  "H 单据备注 与 B/F/J/K/L/M/N 引用的「单头备注」是否同一字段？",
+                               "options":  "A) 同源：H 展示拣料单 T100Remark 整串原文，其余列展示切分后的分段（推断 I-04）；B) 不同源：H 取明细行备注，其余列取单头备注；C) 其他（请在意见中写明）",
+                               "recommendation":  "A（推断 I-04）",
+                               "resolution":  "user-required",
+                               "blocking":  true,
+                               "impact":  "H 列取数字段；若为 B 则需额外定位明细行备注来源",
+                               "source":  "需求 Excel 第 6 行",
+                               "based_on":  "F-21, I-04"
+                           },
+                           {
+                               "id":  "D-05",
+                               "question":  "报表一行代表什么粒度？（决定主查询分组、项数语义、导出结构、前端表格全部形态）",
+                               "options":  "A) 一行 = 单号 × 项目号 × 模组号 的分组（推断 I-05，依据 I 项数=按该三元组统计）；B) 一行 = 一条拣料单（对齐出库综合报表的单级粒度）；C) 一行 = 一条拣料明细行",
+                               "recommendation":  "A（推断 I-05：若为 C 则「项数」恒为 1 而无意义；若为 B 则与 I 列说明的「单号/项目号/模组对应的项数」不符）",
+                               "resolution":  "user-required",
+                               "blocking":  true,
+                               "impact":  "整体数据模型与全部下游实现",
+                               "source":  "需求 Excel 第 6 行 I 列 + 第 8 行",
+                               "based_on":  "F-19, F-20, I-05"
+                           },
+                           {
+                               "id":  "D-06",
+                               "question":  "I 项数的口径是什么？",
+                               "options":  "A) 该 (单号, 项目号, 模组号) 下的拣料明细行数（对齐既有先例）；B) 去重物料编码数；C) 标签数",
+                               "recommendation":  "A（既有实现 OutStockOrderReportService.cs:408 的 ItemQuantity 即明细行数，F-19）",
+                               "resolution":  "auto-resolved",
+                               "blocking":  false,
+                               "impact":  "I 列数值",
+                               "source":  "既有先例",
+                               "based_on":  "F-19"
+                           },
+                           {
+                               "id":  "D-07",
+                               "question":  "备注解析放在哪一层实现？",
+                               "options":  "A) 查询期内存解析（本期默认，只读、无迁移、可逆）；B) 新增同步层物化解析记录表（含 ParseStatus/ParseRuleVersion、历史回填、对账、回滚）",
+                               "recommendation":  "A。B 的前置条件是段位规则先定死（即 D-01..D-04 有结论），且会把复杂度升为 L4，本 revision 不按 B 实现；若选 B 需另开 r02 revision。",
+                               "resolution":  "user-required",
+                               "blocking":  false,
+                               "impact":  "实现层级、是否引入 DDL 与迁移、复杂度等级",
+                               "source":  "用户提出的备选方案",
+                               "based_on":  "F-18, K-10"
+                           },
+                           {
+                               "id":  "D-08",
+                               "question":  "拣料单在回单登记中查无记录时，P 是否收回怎么展示？",
+                               "options":  "A) 展示为空（未登记 ≠ 未收回，避免误读）；B) 展示「未收回」；C) 展示「未登记」",
+                               "recommendation":  "A 或 C（F-17：回单登记按人建单，明细才关联拣料单，未登记是常态，不应等同于未收回）",
+                               "resolution":  "user-required",
+                               "blocking":  false,
+                               "impact":  "P 列语义与用户对回收情况的判断",
+                               "source":  "需求 Excel 第 6/10 行",
+                               "based_on":  "F-17, K-07"
+                           },
+                           {
+                               "id":  "D-09",
+                               "question":  "S 转运下料时间 / T 转运人 取哪一张表？A 收到单据时间（取单据配送时间）又取哪一张？",
+                               "options":  "A) S/T 取 (a) outstock_warehouse_delivery 的 ConfirmOn/DeliveryUserName，与出库综合报表的「配送完成时间/配送人」对齐；A 取 (c) operations_order_delivery 的时间；B) 由用户指定 (a)/(b)/(c) 的具体组合",
+                               "recommendation":  "A（F-16：出库综合报表的配送完成时间取自 (a) 的 ConfirmOn；但「物料配送」一词在项目中同时对应 (c) 的表名，故需用户确认）",
+                               "resolution":  "user-required",
+                               "blocking":  false,
+                               "impact":  "A/S/T 三列的取数表与字段",
+                               "source":  "需求 Excel 第 6/7 行 + 三套并存载体的代码事实",
+                               "based_on":  "F-15, F-16, K-06"
+                           },
+                           {
+                               "id":  "D-10",
+                               "question":  "备料人/转运人/清点人等多值字段的分隔符？",
+                               "options":  "A) 分号（需求 Excel 第 7 行明确）；B) 逗号（与现网其它报表一致）",
+                               "recommendation":  "A，按需求文档执行，并记录与现网逗号先例的差异（F-13、K-08）",
+                               "resolution":  "auto-resolved",
+                               "blocking":  false,
+                               "impact":  "多值列的展示格式",
+                               "source":  "需求 Excel 第 7 行",
+                               "based_on":  "F-13"
+                           },
+                           {
+                               "id":  "D-11",
+                               "question":  "搜索条件与路由族的形态？",
+                               "options":  "A) 保留既有时间范围（含 3 个月门禁），仅新增一个 T100 全模糊匹配框，对 T100 单号（SyncCode）做 Like；路由对齐较新的 reports/\u003ckebab\u003e/{query|export} 族；B) 其他",
+                               "recommendation":  "A。依据：用户原始需求已明确「不增加搜索条件，只增加一个 T100 全模糊匹配」；路由族取 REF-03 的新族以对齐项目演进方向。",
+                               "resolution":  "auto-resolved",
+                               "blocking":  false,
+                               "impact":  "搜索区形态与接口路径",
+                               "source":  "用户原始需求 + F-06",
+                               "based_on":  "F-06, REF-03"
+                           }
+                       ],
+    "acceptance_criteria":  [
+                                {
+                                    "id":  "AC-01",
+                                    "title":  "列表可查询：按 D-05 冻结的粒度返回数据，一行包含 A–W 中 18 个可见列（G/O/W 不出现）",
+                                    "traces_to":  "R-01, R-08, D-05",
+                                    "verification":  "接口返回 + 页面表格列核对"
+                                },
+                                {
+                                    "id":  "AC-02",
+                                    "title":  "C/E/D 三列分别等于 outstock_pick_order.SyncCode、outstock_pick_order_detail.ModuleNo、ProjectNo，取值不经过备注解析",
+                                    "traces_to":  "R-04, R-05, R-06, B-05",
+                                    "verification":  "取一条已知拣料单，与库中字段逐列比对"
+                                },
+                                {
+                                    "id":  "AC-03",
+                                    "title":  "对截图样例「李怡静+WA41+1.5北区+卷绕头模组-聂元克+李想+8月5号+第三批」的解析结果，与 D-01..D-04 冻结的段位规则逐列一致",
+                                    "traces_to":  "R-03, R-07, R-09, R-11, R-12, D-01..D-04",
+                                    "verification":  "单元级样例断言或构造数据端到端验证"
+                                },
+                                {
+                                    "id":  "AC-04",
+                                    "title":  "备注为空或段位不足时，对应列返回空值；查询不报错、不丢行、不补位错位（不会把第 5 段填进第 6 段的位置）",
+                                    "traces_to":  "B-02",
+                                    "verification":  "构造 0 段 / 3 段 / 7 段 / 8 段四类备注分别验证"
+                                },
+                                {
+                                    "id":  "AC-05",
+                                    "title":  "备注含全角 ＋ 或多余空格时按半角 + 精确切分，未命中即视为段位不足并留空，不做智能纠错",
+                                    "traces_to":  "B-01, B-02",
+                                    "verification":  "构造异常分隔符样例验证"
+                                },
+                                {
+                                    "id":  "AC-06",
+                                    "title":  "导出：文件名含报表中文名，前端经由 download(res.data.path,{name,fileName,target:\u0027report\u0027}) 下载；导出列与页面列一致且表头无重复",
+                                    "traces_to":  "R-01, F-08, F-24",
+                                    "verification":  "实际下载并打开 Excel 核对表头"
+                                },
+                                {
+                                    "id":  "AC-07",
+                                    "title":  "查询时间跨度超过 3 个月、或导出行数超过上限时，返回既有门禁错误文案，不静默截断",
+                                    "traces_to":  "B-04",
+                                    "verification":  "构造越界查询"
+                                },
+                                {
+                                    "id":  "AC-08",
+                                    "title":  "多值字段（备料人/转运人/清点人）按分号拼接且同值去重；R 备料人取自明细 PickUser 集合",
+                                    "traces_to":  "R-14, B-03, D-10",
+                                    "verification":  "构造同一单据多个备料人的数据核对"
+                                },
+                                {
+                                    "id":  "AC-09",
+                                    "title":  "P 是否收回基于 operations_order_return_registration_detail.PickOrderId 且主表 Status=BusinessCompleted；未登记情形按 D-08 冻结的口径展示",
+                                    "traces_to":  "R-13, F-17, D-08",
+                                    "verification":  "取已登记已确认 / 已登记未确认 / 未登记三类单据各一核对"
+                                },
+                                {
+                                    "id":  "AC-10",
+                                    "title":  "查询有显式稳定排序，同一查询连续两次分页结果一致（不复刻无 ORDER BY 缺陷）",
+                                    "traces_to":  "C-06, K-09",
+                                    "verification":  "同一条件重复分页比对"
+                                },
+                                {
+                                    "id":  "AC-11",
+                                    "title":  "菜单：只插入 1 行 sys_menu，Path==Component 且与前端 defineOptions name 完全一致；不新增 F 按钮、不写 sys_role_menu；脚本重复执行幂等",
+                                    "traces_to":  "C-03, F-07, F-09",
+                                    "verification":  "脚本执行两次 + 页面路由实际打开"
+                                },
+                                {
+                                    "id":  "AC-12",
+                                    "title":  "页面可从菜单正常进入并渲染，导出按钮可用；中文列名无乱码",
+                                    "traces_to":  "R-01",
+                                    "verification":  "实际浏览器操作"
+                                },
+                                {
+                                    "id":  "AC-13",
+                                    "title":  "既有报表零回归：未修改 OutStockOrderReportService 等既有报表文件，既有报表页面与导出行为不变",
+                                    "traces_to":  "C-04",
+                                    "verification":  "diff 范围核对 + 既有报表页抽查"
+                                },
+                                {
+                                    "id":  "AC-14",
+                                    "title":  "只读保证：本次变更不含任何业务表写操作、不含 DDL（D-07 选 A 的前提下）",
+                                    "traces_to":  "C-02, D-07",
+                                    "verification":  "diff 范围核对；无 INSERT/UPDATE/DELETE 出现在报表服务代码中（菜单 SQL 的 sys_menu 插入除外）"
+                                }
+                            ],
+    "implementation_boundary":  {
+                                    "requirement_source_of_truth":  "本 Plan Package 的 APPROVED revision（r01）；批准结果只写入该 revision 的 approval.json，不得修改已批准 package。",
+                                    "project_evidence_baseline":  "project_id=http://10.10.80.231:8052/hjh1126123/wms；evidence_baseline=worktree .claude/worktree/prep-material-report @ feature/lyp/prep-material-report HEAD 3a59b94fc08323eb4ed161b786121fec3c37482f。若 HEAD 或需求源 Excel 发生变化，先重验受影响 Fact、Scope 与 AC 再执行。",
+                                    "allowed_plan_mode_responsibility":  "HOW / FILES / METHODS / IMPLEMENTATION STEPS —— Plan Mode 可自由选择实现细节与文件组织。",
+                                    "prohibited_redefinition":  "已批准的行为、业务规则、段位映射、范围与排除项、约束、兼容性要求、Acceptance Criteria 均不得由实现方重新定义；尤其不得在实现时自行猜测 D-01..D-05 的答案。",
+                                    "read_boundary":  "IMTC.WMS.AdminWebApi/Services/Services.Report/**、Application/Application.Report/**、Domain/Domain.Warehouse/Entities/OutStock/**、Domain/Domain.Operations/Entities/**、Domain/Domain.Shared/**；IMTC.WMS.AdminUI/src/views/reports/**、src/api/reports/**、src/store/modules/permission.js；sql/publish/**、sql/logs/**、sql/index.md；logs/**（只读参考）。",
+                                    "expected_write_boundary":  "新增文件为主：Services.Report 下新增报表三件套、Application.Report 下新增控制器、AdminUI 下新增 api/views/schemas、sql/publish/v1.3.8.3 下新增菜单脚本、sql/logs/2026-09-23 下新增说明、sql/index.md 追加一行。不得无限制写入；不得修改既有报表实现文件。",
+                                    "stop_conditions":  "出现以下任一情况必须停止并回到用户：1) D-01..D-05 任一仍为 PENDING；2) 取样发现 LEBGJS 备注结构与本 Spec 假设冲突；3) 需要修改同步链路或业务表才能满足 AC（即被迫选择方案 B）；4) 证据冲突（如某 Fact 被推翻）导致 AC 不成立；5) 需要扩大写入范围到既有报表文件或 PDA 端。",
+                                    "verification_boundary":  "必需检查：编译通过（用户明确要求时才执行 build 命令）、AC-03 样例断言、菜单 SQL 幂等执行、页面实际打开。需额外授权：连接生产/测试库取样、执行任何 DDL、运行 build。"
+                                },
+    "packages":  [
+                     {
+                         "id":  "PKG-01-backend-report",
+                         "name":  "后端报表服务与控制器（DTO / 接口 / 服务 / 控制器）",
+                         "skill":  "wms-backend-dev",
+                         "domain":  "report",
+                         "layer":  "backend",
+                         "depends_on":  [
+
+                                        ],
+                         "manifest":  {
+                                          "knowledge":  [
+                                                            "Services.Report 报表层结构与三件套约定",
+                                                            "SqlSugar 查询/分页/批量补齐约定",
+                                                            "ReportQueryPolicy 门禁常量",
+                                                            "拣料单-出库单-领料单-回单登记四段业务数据模型"
+                                                        ],
+                                          "rules":  [
+                                                        ".ai/core/rules/task-log/task-log.md",
+                                                        ".ai/core/rules/bootstrap/powershell-utf8.md",
+                                                        ".ai/core/rules/bootstrap/session-safety.md"
+                                                    ],
+                                          "packs":  [
+
+                                                    ],
+                                          "patterns":  [
+                                                           "BuilderMainQuery + FillXxxDataAsync 批量补齐",
+                                                           "ITransient + 每方法内 IReportDbScopeProvider.GetScope()",
+                                                           "SqlFunc.Subqueryable().Any() EXISTS 过滤",
+                                                           "PagedInfo 泛型分页 + PagerQuery.ToPageAsync",
+                                                           "Mapster .Adapt() 转换查询 DTO",
+                                                           "导出按用户加锁 + 游标分批 + MiniExcel.SaveAs"
+                                                       ]
+                                      },
+                         "boundaries":  {
+                                            "allow_read":  [
+                                                               "IMTC.WMS.AdminWebApi/Services/Services.Report/**",
+                                                               "IMTC.WMS.AdminWebApi/Application/Application.Report/**",
+                                                               "IMTC.WMS.AdminWebApi/Domain/Domain.Warehouse/Entities/OutStock/**",
+                                                               "IMTC.WMS.AdminWebApi/Domain/Domain.Operations/Entities/**",
+                                                               "IMTC.WMS.AdminWebApi/Domain/Domain.Shared/**",
+                                                               "sql/publish/**"
+                                                           ],
+                                            "allow_write":  [
+                                                                "IMTC.WMS.AdminWebApi/Services/Services.Report/Services/Interfaces/**（新增）",
+                                                                "IMTC.WMS.AdminWebApi/Services/Services.Report/Services/Implementations/**（新增）",
+                                                                "IMTC.WMS.AdminWebApi/Services/Services.Report/Dtos/**（新增）",
+                                                                "IMTC.WMS.AdminWebApi/Application/Application.Report/Controllers/**（新增）"
+                                                            ],
+                                            "forbid":  [
+                                                           "修改 OutStockOrderReportService / OutStockDetailReportService / OutStockDifferencePickReportService / OutStockShipmentReportService 等既有报表文件",
+                                                           "任何业务表的写操作（INSERT/UPDATE/DELETE）",
+                                                           "DDL 与数据迁移",
+                                                           "PDA 端任何文件",
+                                                           "logs/**（由协调者统一写）",
+                                                           "sql/**（由 PKG-03 负责）"
+                                                       ]
+                                        },
+                         "contract":  {
+                                          "in_scope":  "新增展示 DTO、查询 DTO、导出 DTO、服务接口、服务实现（含备注分段解析与四段数据批量补齐）、报表控制器；查询必须显式排序。",
+                                          "out_of_scope":  "前端页面、菜单 SQL、既有报表改动、同步链路改动、任何写操作。",
+                                          "expected_files":  "IMTC.WMS.AdminWebApi/Services/Services.Report 下新增 DTO 与 IReport/Report 服务各一组；Application/Application.Report/Controllers 下新增 1 个控制器。具体文件名由实现方按既有命名习惯决定，但必须与前端约定的路由与 DTO 字段名一致。",
+                                          "stop_condition":  "D-01..D-05 任一仍为 PENDING 时不得开工；需要改同步链路或业务表时停止并回报；发现 Fact 被推翻时停止并回报。"
+                                      }
+                     },
+                     {
+                         "id":  "PKG-02-frontend-report",
+                         "name":  "前端报表页面（api / views / schemas / typings）",
+                         "skill":  "wms-frontend-dev",
+                         "domain":  "report",
+                         "layer":  "frontend",
+                         "depends_on":  [
+                                            "PKG-01-backend-report"
+                                        ],
+                         "manifest":  {
+                                          "knowledge":  [
+                                                            "AdminUI 报表页面结构（useTable + Search/Table schema）",
+                                                            "@/lebg/components 组件用法",
+                                                            "动态路由 loadView + sys_menu.Component 一致性要求",
+                                                            "全局 DateTimeJsonConverter 行为"
+                                                        ],
+                                          "rules":  [
+                                                        ".ai/core/rules/task-log/task-log.md",
+                                                        ".ai/core/rules/bootstrap/session-safety.md"
+                                                    ],
+                                          "packs":  [
+
+                                                    ],
+                                          "patterns":  [
+                                                           "useTable + getSearchSchema/getTableSchema",
+                                                           "download(res.data.path, {name, fileName, hasBase:true, target:\u0027report\u0027})",
+                                                           "defineOptions name 必须等于 views 相对路径",
+                                                           "src/api 通过 @/utils/report-request 封装"
+                                                       ]
+                                      },
+                         "boundaries":  {
+                                            "allow_read":  [
+                                                               "IMTC.WMS.AdminUI/src/views/reports/**",
+                                                               "IMTC.WMS.AdminUI/src/api/reports/**",
+                                                               "IMTC.WMS.AdminUI/src/lebg/components/**",
+                                                               "IMTC.WMS.AdminUI/src/store/modules/permission.js",
+                                                               "IMTC.WMS.AdminUI/src/utils/**"
+                                                           ],
+                                            "allow_write":  [
+                                                                "IMTC.WMS.AdminUI/src/api/reports/**（新增）",
+                                                                "IMTC.WMS.AdminUI/src/views/reports/**（新增目录）"
+                                                            ],
+                                            "forbid":  [
+                                                           "修改既有报表页面",
+                                                           "修改全局组件、utils、store、路由配置",
+                                                           "后端文件",
+                                                           "sql/**",
+                                                           "logs/**（由协调者统一写）"
+                                                       ]
+                                        },
+                         "contract":  {
+                                          "in_scope":  "新增 api 模块、页面 index.vue、schemas.tsx、typings.d.ts；搜索区保留时间范围（含 3 个月门禁提示）并新增一个 T100 全模糊输入框；表格 18 列；导出按钮。",
+                                          "out_of_scope":  "任何跨模块重构、组件库改动、路由配置改动。",
+                                          "expected_files":  "IMTC.WMS.AdminUI/src/api/reports/\u003c新报表\u003e.js；IMTC.WMS.AdminUI/src/views/reports/\u003c新目录\u003e/{index.vue,schemas.tsx,typings.d.ts}。目录名必须与 PKG-03 写入的 sys_menu.Path/Component 完全一致。",
+                                          "stop_condition":  "后端契约（路由、DTO 字段名、导出返回结构）未冻结前不得开工；发现需要改全局组件或既有页面时停止并回报。"
+                                      }
+                     },
+                     {
+                         "id":  "PKG-03-menu-and-sql-docs",
+                         "name":  "菜单与发布 SQL 及文档",
+                         "skill":  "wms-backend-dev",
+                         "domain":  "release-sql",
+                         "layer":  "database",
+                         "depends_on":  [
+                                            "PKG-01-backend-report"
+                                        ],
+                         "manifest":  {
+                                          "knowledge":  [
+                                                            "sql/publish 版本目录约定",
+                                                            "sys_menu 菜单插入契约与父锚点失败关闭校验",
+                                                            "sql/logs 与 sql/index.md 文档规范"
+                                                        ],
+                                          "rules":  [
+                                                        ".ai/core/rules/task-log/task-log.md",
+                                                        ".ai/core/rules/bootstrap/powershell-utf8.md"
+                                                    ],
+                                          "packs":  [
+
+                                                    ],
+                                          "patterns":  [
+                                                           "单行 sys_menu 插入 + 父锚点 COUNT(*)=1 校验",
+                                                           "OrderNum = MAX+1 动态计算",
+                                                           "Path == Component（A 型菜单）",
+                                                           "候选雪花 Id 按本期日期重编"
+                                                       ]
+                                      },
+                         "boundaries":  {
+                                            "allow_read":  [
+                                                               "sql/publish/**",
+                                                               "sql/logs/**",
+                                                               "sql/index.md",
+                                                               "IMTC.WMS.AdminUI/src/views/reports/**"
+                                                           ],
+                                            "allow_write":  [
+                                                                "sql/publish/v1.3.8.3/**（新增脚本）",
+                                                                "sql/logs/2026-09-23/**（新增说明）",
+                                                                "sql/index.md（追加 1 行）"
+                                                            ],
+                                            "forbid":  [
+                                                           "修改既有发布脚本",
+                                                           "写 sys_role_menu",
+                                                           "新增 F 按钮菜单行",
+                                                           "后端与前端源码",
+                                                           "logs/**（由协调者统一写）"
+                                                       ]
+                                        },
+                         "contract":  {
+                                          "in_scope":  "新增菜单插入脚本（1 行 sys_menu，Path==Component 指向 PKG-02 的目录）、对应 sql/logs 说明文档、sql/index.md 追加 1 行。",
+                                          "out_of_scope":  "索引脚本、数据修复脚本、权限分配、既有版本目录改动。",
+                                          "expected_files":  "sql/publish/v1.3.8.3/2026-09-23_add_prep_material_report_menu.sql（名称可按既有命名微调）；sql/logs/2026-09-23/*.md；sql/index.md 追加行。",
+                                          "stop_condition":  "PKG-02 的 views 目录名未冻结前不得确定 Path/Component；父锚点校验不唯一（COUNT(*)\u003c\u003e1）时停止并回报，不得自行放宽为无锚点插入。"
+                                      }
+                     }
+                 ],
+    "total_packages":  3,
+    "plan_package_sha256":  "51dc54bea33958babc7d6d427d20a18fea83479b425b85bec4646d02d7f593e7"
+}

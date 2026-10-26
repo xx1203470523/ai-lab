@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "repoRoot": "D:/Project/WMS",
+
+  "targets": {
+    "test": {
+      "outputRoot": "{desktop}/publish/test",
+      "requireCleanWorktree": false,
+      "duplicateMode": "suffix"
+    },
+    "production": {
+      "outputRoot": "{desktop}/publish/production",
+      "requireCleanWorktree": true,
+      "duplicateMode": "suffix"
+    }
+  },
+
+  "kindOrder": ["dotnet", "web", "pdaweb", "pda"],
+
+  "defaultKinds": ["dotnet", "web"],
+
+  "archiveNaming": {
+    "pattern": "{prefix}_{version}{duplicate}.zip",
+    "prefixes": {
+      "admin": "publish",
+      "report": "publish_report",
+      "automation": "publish_automation",
+      "ai": "publish_ai",
+      "frontend": "web",
+      "pdaweb": "pda"
+    },
+    "duplicateStampFormat": "yyyyMMddHH"
+  },
+
+  "version": {
+    "pattern": "^v(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)$",
+    "prefix": "v",
+    "initialVersion": "v1.3.9.2",
+    "scanRoots": ["{desktop}/dev", "{desktop}/publish"]
+  },
+
+  "packaging": {
+    "tool": "bandizip",
+    "executable": "C:/Program Files/Bandizip/bz.exe",
+    "stagingDirName": "_staging",
+    "staleSourceHours": 24
+  },
+
+  "logs": {
+    "dirName": "_logs",
+    "manifestFile": "manifest.json"
+  },
+
+  "safety": {
+    "allowedBranches": ["main", "production", "stag"]
+  }
+}

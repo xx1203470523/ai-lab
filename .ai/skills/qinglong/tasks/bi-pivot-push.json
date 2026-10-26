@@ -1,0 +1,1 @@
+{"key":"bi-pivot-push","name":"BI透视数据推送","command":"BI/bi_pivot.js","schedule":"0 30 22 * * ?","enabled":false}

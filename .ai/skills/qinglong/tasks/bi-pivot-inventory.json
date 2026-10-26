@@ -1,0 +1,1 @@
+{"key":"bi-pivot-inventory","name":"BI透视数据推送-库存","command":"BI/bi_pivot_inventory.js","schedule":"0 0 10 * * ?","enabled":true}

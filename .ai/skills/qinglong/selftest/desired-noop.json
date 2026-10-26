@@ -1,0 +1,7 @@
+{
+  "key": "_selftest-noop",
+  "name": "AI自检_空任务_可删除",
+  "command": "_qls_selftest_noop.js",
+  "schedule": "0 0 4 * * ?",
+  "enabled": false
+}

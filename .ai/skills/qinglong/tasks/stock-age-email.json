@@ -1,0 +1,1 @@
+{"key":"stock-age-email","name":"邮箱推送_库龄物料清单","command":"wms/notify/stock-age-email.js","schedule":"0 0 8 1 * ?","enabled":false}

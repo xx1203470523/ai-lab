@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet('Check', 'Query', 'File')]
+    [ValidateSet('Check', 'Query', 'File', 'Validate')]
     [string]$Mode = 'Check',
 
     [ValidateSet('Auto', 'Cli', 'Jdbc')]
@@ -9,6 +9,11 @@
 
     [string]$Environment,
 
+    [ValidateSet('dev', 'prod.lebg', 'prod.lebgjm', 'prod.lebgty', 'prod.lebgjs', 'prod.lebgch', 'prod.labg', 'prod.bpbg', 'replica', 'bi', 'logs', 'warehouse')]
+    [string]$Target,
+
+    [switch]$ListTargets,
+
     [string]$Database,
 
     [string]$Sql,
@@ -17,7 +22,7 @@
 
     [string]$JdbcJar,
 
-    [int]$Limit = 0
+    [int]$Limit = 100
 )
 
 Set-StrictMode -Version 2.0
@@ -64,37 +69,33 @@ function Read-DbsqlEnv {
 function Resolve-DbsqlConfig {
     param(
         [hashtable]$EnvValues,
-        [string]$EnvironmentName
+        [string]$EnvironmentName,
+        [string]$TargetName
     )
 
-    $selectedEnvironment = $EnvironmentName
-    if ([string]::IsNullOrWhiteSpace($selectedEnvironment) -and $EnvValues.ContainsKey('DBSQL_DEFAULT_ENV')) {
-        $selectedEnvironment = [string]$EnvValues['DBSQL_DEFAULT_ENV']
+    $targetPrefixes = @{
+        'dev' = 'DEV_'; 'prod.lebg' = 'PROD_LEBG_'; 'prod.lebgjm' = 'PROD_'; 'prod.lebgty' = 'PROD_LEBGTY_';
+        'prod.lebgjs' = 'PROD_LEBGJS_'; 'prod.lebgch' = 'PROD_LEBGCH_'; 'prod.labg' = 'PROD_LABG_';
+        'prod.bpbg' = 'PROD_BPBG_'; 'replica' = 'REPLICA_'; 'bi' = 'BI_'; 'logs' = 'LOGS_'; 'warehouse' = 'WAREHOUSE_'
     }
 
-    $prefix = ''
-    $displayEnvironment = 'default'
-    if (-not [string]::IsNullOrWhiteSpace($selectedEnvironment) -and $selectedEnvironment -notin @('default', 'main')) {
-        $displayEnvironment = $selectedEnvironment.Trim().ToLowerInvariant()
-        $prefix = $selectedEnvironment.Trim().ToUpperInvariant() + '_'
-    }
+    $selectedEnvironment = $TargetName
+    if ([string]::IsNullOrWhiteSpace($selectedEnvironment)) { $selectedEnvironment = $EnvironmentName }
+    if ([string]::IsNullOrWhiteSpace($selectedEnvironment) -and $EnvValues.ContainsKey('DBSQL_DEFAULT_ENV')) { $selectedEnvironment = [string]$EnvValues['DBSQL_DEFAULT_ENV'] }
+    if ([string]::IsNullOrWhiteSpace($selectedEnvironment)) { $selectedEnvironment = 'dev' }
+    $selectedEnvironment = $selectedEnvironment.Trim().ToLowerInvariant()
+    if ($selectedEnvironment -in @('default', 'main')) { $selectedEnvironment = 'dev' }
+    if ($selectedEnvironment -notin $targetPrefixes.Keys) { throw "Unknown dbsql target: $selectedEnvironment. Use -ListTargets to see supported targets." }
 
-    $config = @{ DBSQL_ENVIRONMENT = $displayEnvironment }
+    $prefix = $targetPrefixes[$selectedEnvironment]
+    $config = @{ DBSQL_ENVIRONMENT = $selectedEnvironment; DBSQL_TARGET = $selectedEnvironment }
+    if ($selectedEnvironment -eq 'bi') { throw 'BI target is not supported by the MySQL runner; use an approved BI/Oracle read-only workflow.' }
     foreach ($required in @('DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASS', 'DB_NAME')) {
         $key = $prefix + $required
-        if (-not $EnvValues.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$EnvValues[$key])) {
-            throw "Env key missing: $key"
-        }
+        if (-not $EnvValues.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$EnvValues[$key])) { throw "Env key missing for target '$selectedEnvironment': $key" }
         $config[$required] = [string]$EnvValues[$key]
     }
-
-    foreach ($optional in @('DB_SSLMODE', 'DB_ALLOW_LOAD_LOCAL_INFILE', 'DB_POOLING', 'DB_MINIMUM_POOL_SIZE', 'DB_MAXIMUM_POOL_SIZE')) {
-        $key = $prefix + $optional
-        if ($EnvValues.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$EnvValues[$key])) {
-            $config[$optional] = [string]$EnvValues[$key]
-        }
-    }
-
+    if ([string]$config['DB_USER'] -match '(?i)^(root|admin|sa)$') { throw "Target '$selectedEnvironment' does not use a designated read-only account." }
     return $config
 }
 
@@ -112,6 +113,11 @@ function Test-ReadOnlySql {
 
     if ($normalized -notmatch '^(?is)(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|WITH)\b') {
         throw 'Only read-only SQL is allowed. Statement must start with SELECT, SHOW, DESCRIBE, DESC, EXPLAIN, or WITH.'
+    }
+
+    $statements = @($normalized.TrimEnd(';') -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($statements.Count -gt 1) {
+        throw 'Only one read-only SQL statement is allowed per invocation.'
     }
 
     $blockedPattern = '(?is)\b(ALTER|CREATE|DROP|TRUNCATE|INSERT|UPDATE|DELETE|REPLACE|MERGE|CALL|GRANT|REVOKE|LOCK|UNLOCK|LOAD|SET|USE|BEGIN|START\s+TRANSACTION|COMMIT|ROLLBACK)\b|\bINTO\s+(OUTFILE|DUMPFILE)\b'
@@ -334,10 +340,23 @@ public class DbSqlJdbcRunner {
 
 try {
     $envValues = Read-DbsqlEnv -Path $EnvPath
-    $config = Resolve-DbsqlConfig -EnvValues $envValues -EnvironmentName $Environment
+    if ($ListTargets) {
+        @('dev','prod.lebg','prod.lebgjm','prod.lebgty','prod.lebgjs','prod.lebgch','prod.labg','prod.bpbg','replica','bi','logs','warehouse') | ForEach-Object { Write-Output $_ }
+        exit 0
+    }
+
+    $config = Resolve-DbsqlConfig -EnvValues $envValues -EnvironmentName $Environment -TargetName $Target
     $targetDb = $Database
     if ([string]::IsNullOrWhiteSpace($targetDb)) {
         $targetDb = [string]$config['DB_NAME']
+    } elseif ($targetDb -ne [string]$config['DB_NAME']) {
+        throw "Database override '$targetDb' is not allowed for target '$($config['DBSQL_TARGET'])'. Configure a dedicated target instead."
+    }
+
+    if ($Mode -eq 'Validate') {
+        Test-ReadOnlySql -Text $Sql
+        Write-Output ('Validate: OK (target {0}, no database connection)' -f $config['DBSQL_TARGET'])
+        exit 0
     }
 
     $resolved = Resolve-DbsqlDriver -RequestedDriver $Driver -PreferredJdbcJar $JdbcJar
@@ -345,7 +364,8 @@ try {
     if ($Mode -eq 'Check') {
         Write-Output ('Env: OK ({0})' -f $EnvPath)
         Write-Output ('Environment: {0}' -f $config['DBSQL_ENVIRONMENT'])
-        Write-Output ('Target: {0}:{1}/{2} as {3}' -f $config['DB_HOST'], $config['DB_PORT'], $targetDb, $config['DB_USER'])
+        Write-Output ('Target: {0}:{1}/{2}' -f $config['DB_HOST'], $config['DB_PORT'], $targetDb)
+        Write-Output 'ReadOnlyUser: configured (username hidden)'
         if ($null -ne $resolved.Mysql) { Write-Output ('mysql CLI: OK ({0})' -f $resolved.Mysql.Source) } else { Write-Output 'mysql CLI: NOT_FOUND' }
         if ($null -ne $resolved.Java) { Write-Output ('java: OK ({0})' -f $resolved.Java.Source) } else { Write-Output 'java: NOT_FOUND' }
         if ($null -ne $resolved.JdbcJar) { Write-Output ('MySQL JDBC: OK ({0})' -f $resolved.JdbcJar) } else { Write-Output 'MySQL JDBC: NOT_FOUND' }

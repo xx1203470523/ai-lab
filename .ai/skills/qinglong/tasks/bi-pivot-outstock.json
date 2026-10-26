@@ -1,0 +1,1 @@
+{"key":"bi-pivot-outstock","name":"BI透视数据推送-出库","command":"BI/bi_pivot_outstock.js","schedule":"0 0 11 * * ?","enabled":true}

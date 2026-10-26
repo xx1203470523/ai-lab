@@ -1,0 +1,1 @@
+{"key":"unposted-email","name":"邮箱推送_仓库未过账单据","command":"QYWXNotify/unposted_email.js","schedule":"0 0 8 * * ?","enabled":true}

@@ -1,0 +1,14 @@
+{
+  "kind": "pdaweb",
+  "projects": [
+    {
+      "id": "pdaweb",
+      "projectRoot": "IMTC.WMS.PDA",
+      "hbuilderxCli": "D:/Tool/HBuilderX/cli.exe",
+      "manifestPath": "manifest.json",
+      "backendConfigFile": "config.js",
+      "outputDir": "unpackage/dist/build/web",
+      "requiredEntries": ["index.html"]
+    }
+  ]
+}
