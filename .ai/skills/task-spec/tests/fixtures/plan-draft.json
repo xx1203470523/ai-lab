@@ -1,0 +1,23 @@
+{
+  "spec_id": "task-spec-test",
+  "request_slug": "approval-chain",
+  "created_at": "2026-09-02T10:00:00Z",
+  "project_id": "test-project",
+  "evidence_baseline": "fixture",
+  "title": "审批链测试计划",
+  "description": "验证结构化计划包审批和执行读取。",
+  "summary": {"goal":"验证链路"},
+  "current_state": {"facts":[{"id":"F-01","observation":"当前无执行记录"}]},
+  "target_state": {"requirements":[{"id":"R-01","text":"只读取批准版本"}]},
+  "behavior": [{"scenario":"normal","observable":"得到批准包"}],
+  "business_rules": [{"id":"B-01","text":"未批准不可执行"}],
+  "scope": {"in_scope":["计划读取"],"out_of_scope":["业务代码"]},
+  "risks": [{"id":"K-01","trigger":"hash变化","impact":"拒绝执行","mitigation":"重新生成"}],
+  "technical_direction": {"chosen":"PowerShell scripts"},
+  "reference_code_assessment": [],
+  "open_decisions": [{"id":"D-01","resolution":"auto-resolved","blocking":false,"user_decision":"AUTO","text":"使用 JSON"}],
+  "acceptance_criteria": [{"id":"AC-01","text":"批准后 reader 成功"}],
+  "implementation_boundary": {"allow_read":["src/"],"allow_write":["src/"],"forbid":["db/"]},
+  "packages": [{"id":"pkg-01","name":"测试包","skill":"","domain":"test","layer":"business","depends_on":[],"manifest":{"knowledge":[],"rules":[],"packs":[],"patterns":[]},"boundaries":{"allow_read":["src/"],"allow_write":["src/"],"forbid":["db/"]},"contract":{"in_scope":"验证 reader","out_of_scope":"业务修改","expected_files":"0","stop_condition":"超出范围"}}],
+  "plan_markdown": "# 审批链测试计划\n\n这是测试用计划。"
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version":"1.0",
+  "spec_id":"task-spec-test",
+  "package_revision":2,
+  "decision":"APPROVED",
+  "actor":"test-user",
+  "statement":"批准该 revision 用于实施",
+  "item_decisions":[],
+  "item_comments":[],
+  "item_feedback":[]
+}

@@ -1,0 +1,32 @@
+{
+  "kind": "dotnet",
+  "projectRoot": "IMTC.WMS.AdminWebApi/Presentation",
+
+  "configuration": "Release",
+  "framework": "net8.0",
+  "runtime": "linux-x64",
+  "selfContained": false,
+
+  "projects": [
+    {
+      "id": "admin",
+      "project": "Admin.WebApi/Admin.WebApi.csproj",
+      "outputDir": "Admin.WebApi/bin/{configuration}/{framework}/publish"
+    },
+    {
+      "id": "report",
+      "project": "Admin.WebApi.Report/Admin.WebApi.Report.csproj",
+      "outputDir": "Admin.WebApi.Report/bin/{configuration}/{framework}/publish"
+    },
+    {
+      "id": "automation",
+      "project": "AutomationWarehouse.WebApi/AutomationWarehouse.WebApi.csproj",
+      "outputDir": "AutomationWarehouse.WebApi/bin/{configuration}/{framework}/publish"
+    },
+    {
+      "id": "ai",
+      "project": "Admin.WebApi.AI/Admin.WebApi.AI.csproj",
+      "outputDir": "Admin.WebApi.AI/bin/{configuration}/{framework}/publish"
+    }
+  ]
+}

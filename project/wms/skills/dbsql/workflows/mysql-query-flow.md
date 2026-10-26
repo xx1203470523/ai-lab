@@ -7,22 +7,28 @@
 ## Inputs
 
 - 用户问题、单号、日期范围、表名或目标 SQL。
-- 可选环境名；未给出时使用 `.env` 的 `DBSQL_DEFAULT_ENV`，当前支持 `dev` / `prod`。
-- 可选目标库名；未给出时使用所选环境的 `DB_NAME`，生产查询显式传 `-Environment 'prod'`。
+- 优先使用受控 `-Target`：`dev`、`prod.lebg`、`prod.lebgty`、`prod.lebgjs`、`prod.lebgch`、`prod.labg`、`prod.bpbg`、`replica`、`bi`、`logs`、`warehouse`。
+- 未给出目标时使用 `.env` 的 `DBSQL_DEFAULT_ENV`，默认开发库；正式目标必须显式指定。
+- 每个目标从对应前缀读取独立只读连接；未配置目标不得用 `-Database` 任意覆盖或回退主库。
 - 是否只生成 SQL、是否需要实际查询。
 
 ## Flow
 
 1. **分类请求**
+   - 先抽取业务对象、实体/表、单号或时间范围，再匹配 `references/wms-orm-query-boundaries.md`。
    - 查数据：进入脚本只读查询；强调 `/dbsql` 只有查询权限，不执行写操作。
+   - 只生成 SQL：不连接数据库，先完成实体字段核对和 SQL 静态校验。
+   - BI/Oracle 或动态报表库：停止 MySQL 流程，说明当前 Skill 不负责解密或跨驱动连接。
    - 只要 SQL：直接生成 MySQL SQL，不连接数据库。
    - 归档 SQL：按 `sql/` 目录规范生成文件；写操作 SQL 不执行。
 
 2. **快速检查**
+   - 先运行本地无网络校验（目标和 SQL）：`-Mode Validate`；列出目标可用性可用 `-ListTargets`。
+   - 需要真实连通性时才运行 `Check`；这一步会连接数据库，必须明确目标并确认使用已授权只读账号。
    - 同一轮未检查过时运行；默认 Auto 会优先 `mysql` CLI，缺失时使用 Java + DBeaver MySQL JDBC 驱动：
 
    ```powershell
-   & "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Check
+   & "$env:USERPROFILE/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Check -Target dev
    ```
 
    - 检查失败就停止，输出缺失项和一个下一步动作。
@@ -35,13 +41,13 @@
 4. **执行只读查询**
 
    ```powershell
-   & "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Query -Sql '<SQL>'
+   & "$env:USERPROFILE/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Query -Target dev -Sql '<SQL>'
    ```
 
    或：
 
    ```powershell
-   & "~/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode File -SqlPath '<file.sql>'
+   & "$env:USERPROFILE/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode File -Target dev -SqlPath '<file.sql>'
    ```
 
 5. **输出结果**

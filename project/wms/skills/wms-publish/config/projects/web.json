@@ -1,0 +1,13 @@
+{
+  "kind": "web",
+  "projects": [
+    {
+      "id": "frontend",
+      "projectRoot": "IMTC.WMS.AdminUI",
+      "buildCommand": ["build"],
+      "mode": "staging",
+      "outputDir": "dist",
+      "requiredEntries": ["index.html"]
+    }
+  ]
+}

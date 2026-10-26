@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+
+  "environments": {
+    "dev": {
+      "label": "开发",
+      "defaultSite": "LEBGJM",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Development.json:118 System.DefaultSite=LEBGJM"
+      ]
+    },
+    "stag": {
+      "label": "预发",
+      "defaultSite": "LEBGJS",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Staging.json:54 System.DefaultSite=LEBGJS"
+      ]
+    },
+    "prod": {
+      "label": "正式",
+      "defaultSite": "BPBG",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Production.json:73 System.DefaultSite=BPBG（提交版本的值）",
+        "本字段与库名之间没有任何绑定关系，且会被本地环境切换覆盖：工作区曾出现未提交改动把它改成 LEBGJM（见 git diff appsettings.Production.json），因此它不足以证明任何据点与库的对应关系，只可作为「运行期默认据点」的线索。"
+      ]
+    }
+  },
+
+  "tenants": {
+    "wms": "WMS 主业务库（DBTenant.Default / ConfigId=WMS）",
+    "warehouse": "自动化立库库（ConfigId=AutomationWarehouse）",
+    "shared": "共享基础数据库（ConfigId=Shared）",
+    "logs": "接口与操作日志库（ConfigId=Logs）",
+    "bi": "BI 分析库（ConfigId=BI，Oracle）"
+  },
+
+  "engines": {
+    "mysql": "MySQL，有执行器",
+    "oracle": "Oracle，本技能无执行器"
+  },
+
+  "siteDatabaseMap": {
+    "LEBGJM": "wms_lebg",
+    "LEBG": "wms_lebgty",
+    "LABG": "wms_labg",
+    "LEBGCH": "wms_lebgch",
+    "LEBGJS": "wms_lebgjs",
+    "LEBGSZ": "wms_lebgty"
+  },
+  "siteDatabaseMapNote": "证据层，不参与运行期解析。来源是工具侧配置而非应用真值，因此只用于 Validate 时的告警式交叉核对。据点与库名之间不做任何推导：每条路由的 database 必须显式写出。",
+
+  "routes": [
+    {
+      "id": "dev.lebgjm",
+      "environment": "dev",
+      "tenant": "wms",
+      "site": "LEBGJM",
+      "engine": "mysql",
+      "database": "wms_lebg",
+      "host": "10.10.80.211",
+      "port": 3306,
+      "credentialPrefix": "DEV_LEBGJM_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "appsettings.Development 的 ConfigId=WMS、System.DefaultSite=LEBGJM 与据点→库映射三方一致。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Development.json:12-14 ConfigId=WMS → Data Source=10.10.80.211;port=3306;Database=wms_lebg",
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Development.json:118 System.DefaultSite=LEBGJM"
+      ]
+    },
+    {
+      "id": "dev.warehouse",
+      "environment": "dev",
+      "tenant": "warehouse",
+      "site": null,
+      "engine": "mysql",
+      "database": "wms_automation_warehouse",
+      "host": "10.10.80.211",
+      "port": 3306,
+      "credentialPrefix": "DEV_WAREHOUSE_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "appsettings.Development 的 ConfigId=AutomationWarehouse 直接声明。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Development.json:36-38 ConfigId=AutomationWarehouse → Database=wms_automation_warehouse"
+      ]
+    },
+    {
+      "id": "dev.shared",
+      "environment": "dev",
+      "tenant": "shared",
+      "site": null,
+      "engine": "mysql",
+      "database": "wms_lebg_shared",
+      "host": "10.10.80.211",
+      "port": 3306,
+      "credentialPrefix": "DEV_SHARED_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "appsettings.Development 的 ConfigId=Shared 直接声明。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Development.json:48-50 ConfigId=Shared → Database=wms_lebg_shared"
+      ]
+    },
+    {
+      "id": "dev.logs",
+      "environment": "dev",
+      "tenant": "logs",
+      "site": null,
+      "engine": "mysql",
+      "database": "wms_lebg_shared",
+      "host": "10.10.80.211",
+      "port": 3306,
+      "credentialPrefix": "DEV_LOGS_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "appsettings.Development 的 ConfigId=Logs 直接声明；开发环境日志库与 shared 指向同一个物理库，但属于不同 ConfigId，因此拆成两条路由。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Development.json:72-74 ConfigId=Logs → Database=wms_lebg_shared"
+      ]
+    },
+    {
+      "id": "dev.bi",
+      "environment": "dev",
+      "tenant": "bi",
+      "site": null,
+      "engine": "oracle",
+      "database": "ORCL",
+      "host": "10.10.77.20",
+      "port": 1521,
+      "credentialPrefix": "DEV_BI_",
+      "allowWrite": false,
+      "status": "unsupported",
+      "statusReason": "DbType=Oracle，本技能无 Oracle 执行器。保留路由只为让状态可见，不提供连接能力。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Development.json:60-64 ConfigId=BI → DbType=Oracle, Data Source=10.10.77.20:1521/ORCL"
+      ]
+    },
+
+    {
+      "id": "stag.lebgjs",
+      "environment": "stag",
+      "tenant": "wms",
+      "site": "LEBGJS",
+      "engine": "mysql",
+      "database": "wms_lebgjs",
+      "host": "10.10.76.108",
+      "port": 3306,
+      "credentialPrefix": "STAG_LEBGJS_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "appsettings.Staging 的 ConfigId=WMS、System.DefaultSite=LEBGJS 与据点→库映射三方一致。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Staging.json ConfigId=WMS → Data Source=10.10.76.108;port=3306;Database=wms_lebgjs",
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Staging.json:54 System.DefaultSite=LEBGJS"
+      ]
+    },
+    {
+      "id": "stag.shared",
+      "environment": "stag",
+      "tenant": "shared",
+      "site": null,
+      "engine": "mysql",
+      "database": "wms_lebg_shared",
+      "host": "10.10.80.211",
+      "port": 3306,
+      "credentialPrefix": "STAG_SHARED_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "appsettings.Staging 的 ConfigId=Shared 直接声明；预发环境共享库仍指向开发主机。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Staging.json ConfigId=Shared → Data Source=10.10.80.211;Database=wms_lebg_shared"
+      ]
+    },
+
+    {
+      "id": "prod.lebgjm",
+      "environment": "prod",
+      "tenant": "wms",
+      "site": "LEBGJM",
+      "engine": "mysql",
+      "database": "wms_lebg",
+      "host": "10.10.76.167",
+      "port": 3306,
+      "credentialPrefix": "PROD_LEBGJM_",
+      "allowWrite": false,
+      "status": "needs-review",
+      "statusReason": "库名与主机有提交版本 appsettings 的直接证据（ConfigId=WMS → wms_lebg@10.10.76.167），但「据点 LEBGJM ↔ 该库」这一层只有工具侧 ini 支撑：提交版本 appsettings.Production.json:73 的 System.DefaultSite 是 BPBG 而不是 LEBGJM，所以开发/预发都成立的「三方一致」在正式环境并不成立。人工确认据点与库的对应关系之前，本路由不得被视为可用。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Production.json:8-10 ConfigId=WMS → Data Source=10.10.76.167;port=3306;Database=wms_lebg（提交版本）",
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Production.json:73 System.DefaultSite=BPBG（提交版本）——与据点 LEBGJM 不一致，故不能充当据点↔库的佐证",
+        "tools/库存比对/inventory_diff_config.ini [site_db] LEBGJM = wms_lebg（工具侧配置，非应用真值）",
+        "工作区存在未提交改动把同一文件改为 DefaultSite=LEBGJM 并启用 WMS_ReadOnly；本路由的状态与证据一律以提交版本为准，不随工作区漂移。"
+      ]
+    },
+    {
+      "id": "prod.warehouse",
+      "environment": "prod",
+      "tenant": "warehouse",
+      "site": null,
+      "engine": "mysql",
+      "database": "wms_lebgjm_automation_warehouse",
+      "host": "10.10.76.167",
+      "port": 3306,
+      "credentialPrefix": "PROD_WAREHOUSE_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "AutomationWarehouse.WebApi 的 appsettings.Production.json 直接声明；正式环境立库库名带 lebgjm 前缀，与开发环境的 wms_automation_warehouse 不同名。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/AutomationWarehouse.WebApi/appsettings.Production.json ConfigId=AutomationWarehouse → Data Source=10.10.76.167;Database=wms_lebgjm_automation_warehouse"
+      ]
+    },
+    {
+      "id": "prod.shared",
+      "environment": "prod",
+      "tenant": "shared",
+      "site": null,
+      "engine": "mysql",
+      "database": "wms_shared",
+      "host": "10.10.76.167",
+      "port": 3306,
+      "credentialPrefix": "PROD_SHARED_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "appsettings.Production 的 ConfigId=Shared 直接声明。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Production.json:32-34 ConfigId=Shared → Data Source=10.10.76.167;Database=wms_shared"
+      ]
+    },
+    {
+      "id": "prod.logs",
+      "environment": "prod",
+      "tenant": "logs",
+      "site": null,
+      "engine": "mysql",
+      "database": "wms_log",
+      "host": "10.10.76.168",
+      "port": 3306,
+      "credentialPrefix": "PROD_LOGS_",
+      "allowWrite": false,
+      "status": "ready",
+      "statusReason": "appsettings.Production 的 ConfigId=Logs 直接声明。这是仓库中唯一已经使用非 root 账号（wms_log）的连接，因此在提供一个同等权限的只读账号前，它是最可能先达到 ready 的正式路由。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Production.json:56-58 ConfigId=Logs → Data Source=10.10.76.168;Database=wms_log;User ID=wms_log"
+      ]
+    },
+    {
+      "id": "prod.bpbg",
+      "environment": "prod",
+      "tenant": "wms",
+      "site": "BPBG",
+      "engine": "mysql",
+      "database": "wms_bpbg",
+      "host": "10.10.76.166",
+      "port": 3306,
+      "credentialPrefix": "PROD_BPBG_",
+      "allowWrite": false,
+      "status": "needs-review",
+      "statusReason": "库名与主机出自 appsettings.Production 的 ConfigId=WMS_ReadOnly（wms_bpbg@10.10.76.166），但该条目在**提交版本里整段是被注释掉的**——工作区有未提交改动把它启用。注释掉的配置只能算线索，不能算应用真值；同时 DBTenant.ReadOnlyWMS 在全部 C# 代码中零引用，账号仍是 root。因此本路由在人工确认（BPBG 据点当前是否在用、库是否真实存在）之前维持 needs-review。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Production.json:20-22 ConfigId=WMS_ReadOnly → Data Source=10.10.76.166;Database=wms_bpbg（提交版本中该 ConfigId 所在整段被注释）",
+        "IMTC.WMS.AdminWebApi/Domain/Domain.Shared/Constants/Database/DBTenant.cs:36 public const string ReadOnlyWMS = \"WMS_ReadOnly\"（全仓零引用）",
+        "对照证据：appsettings.Staging.json:24 的 WMS_ReadOnly 是**启用**的，指向 10.10.76.166/wms_lebgjs，而预发主库在 10.10.76.108——同名库、不同主机，说明 .166 是一台独立的服务器，不能假定它上面的库与主库一致。"
+      ]
+    },
+    {
+      "id": "prod.lebg",
+      "environment": "prod",
+      "tenant": "wms",
+      "site": "LEBG",
+      "engine": "mysql",
+      "database": "wms_lebgty",
+      "host": null,
+      "port": null,
+      "credentialPrefix": "PROD_LEBG_",
+      "allowWrite": false,
+      "status": "needs-review",
+      "statusReason": "⚠ 据点 LEBG 在工具侧映射中指向 wms_lebgty，而据点 LEBGJM 才指向 wms_lebg——这与「LEBG 是主据点」的直觉相反，且只有单一非应用配置来源。在人工确认据点与库的对应关系之前，本路由不得被视为可用。",
+      "evidence": [
+        "tools/库存比对/inventory_diff_config.ini [site_db] LEBG = wms_lebgty（工具侧配置，非应用真值）"
+      ]
+    },
+    {
+      "id": "prod.lebgsz",
+      "environment": "prod",
+      "tenant": "wms",
+      "site": "LEBGSZ",
+      "engine": "mysql",
+      "database": "wms_lebgty",
+      "host": null,
+      "port": null,
+      "credentialPrefix": "PROD_LEBGSZ_",
+      "allowWrite": false,
+      "status": "needs-review",
+      "statusReason": "工具侧映射中 LEBGSZ 与 LEBG 共用同一个物理库 wms_lebgty。多据点指向同一库是必须能表达的合法结构，但同样只有单一非应用配置来源。",
+      "evidence": [
+        "tools/库存比对/inventory_diff_config.ini [site_db] LEBGSZ = wms_lebgty"
+      ]
+    },
+    {
+      "id": "prod.lebgty",
+      "environment": "prod",
+      "tenant": "wms",
+      "site": "LEBGTY",
+      "engine": "mysql",
+      "database": "wms_lebgty",
+      "host": null,
+      "port": null,
+      "credentialPrefix": "PROD_LEBGTY_",
+      "allowWrite": false,
+      "status": "needs-review",
+      "statusReason": "库名 wms_lebgty 只出现在工具侧映射中，任何 appsettings 都没有它；主机与端口亦无证据。",
+      "evidence": [
+        "tools/库存比对/inventory_diff_config.ini [site_db] LEBG = wms_lebgty（据点 LEBGTY 自身无独立条目）"
+      ]
+    },
+    {
+      "id": "prod.lebgch",
+      "environment": "prod",
+      "tenant": "wms",
+      "site": "LEBGCH",
+      "engine": "mysql",
+      "database": "wms_lebgch",
+      "host": null,
+      "port": null,
+      "credentialPrefix": "PROD_LEBGCH_",
+      "allowWrite": false,
+      "status": "needs-review",
+      "statusReason": "库名 wms_lebgch 只出现在工具侧映射中，任何 appsettings 都没有它；主机与端口亦无证据。",
+      "evidence": [
+        "tools/库存比对/inventory_diff_config.ini [site_db] LEBGCH = wms_lebgch"
+      ]
+    },
+    {
+      "id": "prod.labg",
+      "environment": "prod",
+      "tenant": "wms",
+      "site": "LABG",
+      "engine": "mysql",
+      "database": "wms_labg",
+      "host": null,
+      "port": null,
+      "credentialPrefix": "PROD_LABG_",
+      "allowWrite": false,
+      "status": "needs-review",
+      "statusReason": "库名 wms_labg 只出现在工具侧映射中，任何 appsettings 都没有它；主机与端口亦无证据。",
+      "evidence": [
+        "tools/库存比对/inventory_diff_config.ini [site_db] LABG = wms_labg"
+      ]
+    },
+    {
+      "id": "prod.lebgjs",
+      "environment": "prod",
+      "tenant": "wms",
+      "site": "LEBGJS",
+      "engine": "mysql",
+      "database": "wms_lebgjs",
+      "host": null,
+      "port": null,
+      "credentialPrefix": "PROD_LEBGJS_",
+      "allowWrite": false,
+      "status": "needs-review",
+      "statusReason": "库名 wms_lebgjs 在预发环境有应用配置证据，但正式环境的 wms_lebgjs 只有工具侧映射；不要因为预发可用就推断正式也可用。",
+      "evidence": [
+        "tools/库存比对/inventory_diff_config.ini [site_db] LEBGJS = wms_lebgjs",
+        "对照：IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Staging.json ConfigId=WMS → Database=wms_lebgjs（仅证明预发）"
+      ]
+    },
+    {
+      "id": "prod.bi",
+      "environment": "prod",
+      "tenant": "bi",
+      "site": null,
+      "engine": "oracle",
+      "database": "ORCL",
+      "host": "10.10.77.20",
+      "port": 1521,
+      "credentialPrefix": "PROD_BI_",
+      "allowWrite": false,
+      "status": "unsupported",
+      "statusReason": "DbType=Oracle，本技能无 Oracle 执行器。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Production.json:44-46 ConfigId=BI → DbType=Oracle, Data Source=10.10.77.20:1521/ORCL"
+      ]
+    }
+  ],
+
+  "nonRoutes": [
+    {
+      "id": "replica",
+      "kind": "capability-absent",
+      "status": "unsupported",
+      "reason": "「从库/只读库」在本项目架构上不存在：DBTenant.ReadOnlyWMS 常量在全仓零代码引用，且所有 SlaveConnectionConfigs 都是空数组，没有读写分离配置。标记为 unsupported 而不是 disabled——disabled 会暗示「配上就能用」。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Domain/Domain.Shared/Constants/Database/DBTenant.cs:36 ReadOnlyWMS 常量定义处之外无任何引用"
+      ]
+    },
+    {
+      "id": "readonly-host-10.10.76.166",
+      "kind": "evidence-unresolved",
+      "status": "needs-review",
+      "reason": "10.10.76.166 上的 WMS_ReadOnly 在预发与正式两处出现（预发启用→10.10.76.166/wms_lebgjs，正式注释掉→10.10.76.166/wms_bpbg），而两个环境的主库分别在 10.10.76.108 与 10.10.76.167——同名库却不在同一台机器上，看起来是一台专门的只读服务器。但该 ConfigId 在 C# 代码中零引用，账号仍是 root，定位未明之前不为它建立独立路由；正式 BPBG 已由 prod.bpbg 表达（该路由同样是 needs-review）。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Staging.json:24 ConfigId=WMS_ReadOnly → 10.10.76.166/wms_lebgjs（启用）",
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Production.json:20-22 ConfigId=WMS_ReadOnly → 10.10.76.166/wms_bpbg（提交版本中被注释）",
+        "IMTC.WMS.AdminWebApi/Presentation/Admin.WebApi/appsettings.Development.json:24-26 ConfigId=WMS_ReadOnly → 10.10.80.211/wms_lebg（启用，与开发主库同主机同库）——同一 ConfigId 在开发环境根本不是独立副本，说明它没有独立语义。"
+      ]
+    },
+    {
+      "id": "report.<site>",
+      "kind": "out-of-scope",
+      "status": "unsupported",
+      "reason": "报表库的连接串是运行期从 sys_site 表里用 AES 密文解出来的（ReportDbScopeProvider，DbType 硬编码 MySql，ConfigId 形如 Report:{site}:{version}），既不是静态 DBTenant.BI，也不在 appsettings 里。本技能不解密该密文，因此不纳入路由。",
+      "evidence": [
+        "IMTC.WMS.AdminWebApi/Services/Services.Report/Services/Implementations/ReportDbScopeProvider.cs:39-92"
+      ]
+    }
+  ]
+}

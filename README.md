@@ -9,7 +9,8 @@
 ```
 ai-lab/
 ├── .ai/                   # 跨项目通用：Skill、Rules、Scripts、Protocols
-│   ├── skills/            #   git、skill-gen、task-plan、task-execute
+│   ├── skills/            #   git、skill-gen、task-plan/execute/planner/ready/spec、
+│   │                      #   db-ops、qinglong、ai-observer-view
 │   ├── rules/             #   git 等通用约束
 │   ├── protocols/         #   Agent Task Packet、Context 协议
 │   ├── scripts/           #   search-knowledge.ps1 等

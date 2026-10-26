@@ -1,0 +1,15 @@
+{
+  "kind": "pda",
+  "projects": [
+    {
+      "id": "pda",
+      "projectRoot": "IMTC.WMS.PDA",
+      "releaseScript": "release/scripts/build-apk.ps1",
+      "outputDir": "release/output",
+      "expectedOutput": "WMS-PDA_v*.apk",
+      "versionMarker": "release/output/version.txt",
+      "manifestPath": "manifest.json",
+      "backendConfigFile": "config.js"
+    }
+  ]
+}

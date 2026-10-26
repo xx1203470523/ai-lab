@@ -1,0 +1,1 @@
+{"key":"bi-pivot-instock","name":"BI透视数据推送-入库","command":"BI/bi_pivot_instock.js","schedule":"0 30 10 * * ?","enabled":false}
