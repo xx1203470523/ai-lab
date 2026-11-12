@@ -1,0 +1,1 @@
+{"key":"allot-sync","name":"调拨单增量同步","command":"wms/automationwarehouse/sync_transfer.js","schedule":"57 */5 * * * ?","enabled":true}

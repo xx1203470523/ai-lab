@@ -1,0 +1,1 @@
+{"key":"warehouse-sync","name":"仓库增量同步","command":"wms/automationwarehouse/sync_warehouse.js","schedule":"41 */5 * * * ?","enabled":true}

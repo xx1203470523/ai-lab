@@ -1,0 +1,1 @@
+{"key":"customer-sync","name":"客户增量同步","command":"wms/automationwarehouse/sync_customer.js","schedule":"34 */5 * * * ?","enabled":true}

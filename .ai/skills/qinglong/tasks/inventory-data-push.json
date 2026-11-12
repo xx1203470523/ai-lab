@@ -1,0 +1,1 @@
+{"key":"inventory-data-push","name":"库存数据推送","command":"BI/data_stock_push.js","schedule":"0 10 5 * * ?","enabled":true}

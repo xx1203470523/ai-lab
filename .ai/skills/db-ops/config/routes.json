@@ -60,7 +60,7 @@
       "host": "10.10.80.211",
       "port": 3306,
       "credentialPrefix": "DEV_LEBGJM_",
-      "allowWrite": false,
+      "allowWrite": true,
       "status": "ready",
       "statusReason": "appsettings.Development 的 ConfigId=WMS、System.DefaultSite=LEBGJM 与据点→库映射三方一致。",
       "evidence": [

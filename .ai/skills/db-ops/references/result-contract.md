@@ -19,7 +19,7 @@
 | 码 | 语义 |
 |---|---|
 | `0` | 成功 |
-| `1` | 硬失败（配置非法、调用未实现功能、SQL 被只读模式拒绝） |
+| `1` | 硬失败（配置非法、SQL 被只读模式拒绝、Exec 收到只读 SQL 或多条语句） |
 | `2` | 需要确认 |
 | `3` | 缺少确认摘要 |
 | `4` | 摘要不匹配 |
@@ -61,17 +61,17 @@
 
 - `Validate` → `Details`：`SkillRoot`、`CredentialsPath`、`CredentialsFileState`、`CredentialsErrors`、`TargetStatus`、`TargetStatusReason`、`RouteCount`、`ReadyCount`、`ProdReadyCount`、`Routes`、`SqlCheck`、`NonRoutes`。
 - `ListTargets` → `Details`：`CredentialsFileState`、`RouteCount`、`Routes`、`NonRoutes`。
+- `Check` / `Query` / `File` → `Details`：`Driver`（`Jdbc` / `Cli`）、`AffectedRows`（查询为 `null`）、`SqlHash`。
+- `Exec` → 同上，另加 `PlanDigest`（与 `-Confirm` 比对的那 16 位摘要）。
 
-`Validate` 另有顶层 `ExplainPlan`，阶段 1 **恒为 `null`**（没有执行器，不做 EXPLAIN）。
+`Validate` 另有顶层 `ExplainPlan`，**恒为 `null`**（不执行 EXPLAIN）。
 
-## 阶段 1 的实际形状（重要）
+## 执行模式的信封
 
-阶段 1 只有 `Validate` 与 `ListTargets`，因此：
-
-- **不存在** `Success = true` 且带 `Rows` 的信封。`-Mode Check/Query/File/Exec` 直接 `exit 1` 且信封为 `null`。这是刻意的：一个「什么都没做但返回 0 行」的查询入口，会被当成「查到了，就是没有数据」。
-- 其余执行相关字段（`RowsReturned` / `Limit` / `ElapsedMs` / `ResultFile` …）**保持初值**，它们的存在只为让消费者不必改代码。
-
-看到 `RowsReturned = 0` 时**不要**理解为「查了，没有数据」——阶段 1 里它只是初值。
+- `Check` / `Query` / `File` 成功时返回 `Success = true`，`Columns` / `Rows` / `RowsReturned` / `ElapsedMs` / `LimitReached` / `PossiblyTruncated` 都来自真实执行结果。
+- `Exec` 成功时 `RowsReturned` 取决于语句是否有结果集；`Details.AffectedRows` 来自 JDBC 的 `getUpdateCount()`（CLI 驱动为 `null`）。
+- 失败时信封可能为 `null`（例如 SQL 守卫拒绝、摘要缺失）。**先看退出码，再看信封。**
+- `Details` 是执行模式新增的顶层字段；固定契约里的其他字段不变。
 
 ## 截断语义
 

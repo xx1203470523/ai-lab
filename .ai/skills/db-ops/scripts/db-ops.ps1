@@ -3,18 +3,19 @@
     db-ops 唯一公开入口。
 
 .DESCRIPTION
-    阶段 1 可用：Validate、ListTargets。二者都是**完全离线**的——不连数据库、不写文件、
-    不创建日志目录、不碰凭据文件的 ACL。
+    Validate / ListTargets 是**完全离线**的——不连数据库、不写文件、不创建日志目录、
+    不碰凭据文件的 ACL。
 
-    Check / Query / File / Exec 明确报「阶段 2 未实现」并 exit 1，绝不静默成功：
-    一个「什么都没做但返回 0」的查询入口，比一个明确报错的入口危险得多。
+    Check / Query / File 真实连库执行只读语句，**不需要确认**。
+    Exec 只接受写语句，且必须先拿到计划摘要、再由用户核对后用 -Confirm 传回；
+    缺摘要 exit 3，摘要不匹配 exit 4。
 
     退出码
       0 成功
-      1 硬失败（JSON 非法、schemaVersion 未知、未知字段、调用未实现功能、写 SQL 走只读模式）
-      2 需要确认（本阶段由 setup-credentials.ps1 的 -Force 缺 -ConfirmReset 产生）
-      3 缺少确认摘要（阶段 2）
-      4 摘要不匹配（阶段 2）
+      1 硬失败（JSON 非法、schemaVersion 未知、未知字段、写 SQL 走只读模式、Exec 收到只读 SQL 或多条语句）
+      2 需要确认（由 setup-credentials.ps1 的 -Force 缺 -ConfirmReset 产生）
+      3 缺少确认摘要（Exec 写操作没有 -Confirm）
+      4 摘要不匹配（-Confirm 与当前计划不符）
       5 目标就绪度不足（unconfigured / unsupported / disabled / needs-review / blocked / permission-warning）
       6 输入非法（未知路由、未指定目标、参数组合非法、凭据文件结构非法）
       7 无法交互（只由 setup-credentials.ps1 产生）
@@ -49,6 +50,17 @@ param(
     [ValidateSet('Table', 'Tsv', 'Json')]
     [string]$Format,
 
+    # 写操作的确认摘要。拿到计划后由人核对，再把摘要原样传回来。
+    # 计划（路由 + 库 + SQL 原文）任何一处变化都会让摘要失配。
+    [string]$Confirm,
+
+    # 执行驱动：Auto 优先 mysql CLI，没有再走 Java + JDBC。
+    [ValidateSet('Auto', 'Cli', 'Jdbc')]
+    [string]$Driver = 'Auto',
+
+    # 显式指定 MySQL JDBC 驱动 jar（默认自动搜索 DBeaver 的驱动目录）。
+    [string]$JdbcJar,
+
     # 库名是 routes.json 的事实。保留这个参数只是为了报出「不允许覆盖」这个明确的拒绝，
     # 而不是让旧用法静默生效。
     [string]$Database,
@@ -82,6 +94,7 @@ try {
 . (Join-Path $PSScriptRoot 'lib\config.ps1')
 . (Join-Path $PSScriptRoot 'lib\credentials.ps1')
 . (Join-Path $PSScriptRoot 'lib\sql-safety.ps1')
+. (Join-Path $PSScriptRoot 'lib\mysql.ps1')
 . (Join-Path $PSScriptRoot 'lib\output.ps1')
 
 $EXIT_OK = 0
@@ -131,6 +144,11 @@ function New-RouteStateList {
     foreach ($route in @(Get-DbOpsRouteList -Routes $Routes)) {
         $routeCredential = Get-RouteCredential -Route $route -Values $CredentialValues -Policy $Policy
         $status = Get-DbOpsRouteStatus -Route $route -FileState $FileState -RouteCredential $routeCredential -Policy $Policy
+        $reason = [string]$status.Reason
+        # 高权限账号只作为可见告警：它不再阻断只读查询（见 config.ps1 的说明）。
+        if ([bool](Get-OptionalProperty -Object $routeCredential -Name 'HighPrivilege' -Default $false)) {
+            $reason = $reason + ' 注意：账号命中高权限模式，只读查询可用；写操作需 -Mode Exec 的确认摘要。'
+        }
         $states += [pscustomobject]@{
             Id          = [string]$route.id
             Environment = [string]$route.environment
@@ -139,7 +157,8 @@ function New-RouteStateList {
             Engine      = [string]$route.engine
             Target      = (Get-RedactedRouteInfo -Route $route)
             Status      = [string]$status.EffectiveStatus
-            Reason      = [string]$status.Reason
+            Reason      = $reason
+            HighPrivilege = [bool](Get-OptionalProperty -Object $routeCredential -Name 'HighPrivilege' -Default $false)
         }
     }
     return @($states)
@@ -241,7 +260,7 @@ function Invoke-Validate {
     $lines.Add(('  requireExplicitTarget : {0}' -f $Policy.requireExplicitTarget))
     $lines.Add(('  环境开关              : dev={0} stag={1} prod={2}' -f $Policy.environments.dev, $Policy.environments.stag, $Policy.environments.prod))
     $lines.Add(('  输出上限              : maxRows={0} maxCellChars={1}' -f $Policy.output.maxRows, $Policy.output.maxCellChars))
-    $lines.Add(('  执行闸门              : exec.allowWrite={0}（阶段 1 恒为 false，且 Exec 未实现）' -f $Policy.exec.allowWrite))
+    $lines.Add(('  执行闸门              : exec.allowWrite={0}（写操作另需路由 allowWrite=true 与 -Confirm 摘要）' -f $Policy.exec.allowWrite))
     $lines.Add('')
 
     # --- 凭据文件 ---
@@ -262,7 +281,7 @@ function Invoke-Validate {
         if ($configuredPrefixes.Count -gt 0) { $prefixText = $configuredPrefixes -join '、' }
         $lines.Add(('凭据：{0}' -f $FileState))
         $lines.Add(('  已完整配置的前缀：{0}' -f $prefixText))
-        $lines.Add('  本阶段不验证连通性：前缀齐备只说明「配置到位」，不代表账号能连上库。')
+        $lines.Add('  Validate 不验证连通性：前缀齐备只说明「配置到位」，不代表账号能连上库。需要验证请跑 -Mode Check。')
     }
     $lines.Add('')
 
@@ -278,12 +297,12 @@ function Invoke-Validate {
     # --- 证据层交叉核对（只告警） ---
     foreach ($warning in @(Get-DbOpsRouteWarnings -Routes $Routes)) { $warnings.Add([string]$warning) }
 
-    # 覆盖率是阶段 1 必须显式说明的事实：正式路由很可能一条都到不了 ready。
+    # 覆盖率必须显式说明：ready 需要凭据文件里有该前缀的 4 个键。
     $readyCount = @($states | Where-Object { $_.Status -eq 'ready' }).Count
     $prodReady = @($states | Where-Object { $_.Status -eq 'ready' -and $_.Environment -eq 'prod' }).Count
     $lines.Add(('就绪度：{0}/{1} 条路由 ready，其中 prod 环境 {2} 条。' -f $readyCount, $states.Count, $prodReady))
-    $lines.Add('  「ready 为 0」不等于技能坏了：每条 ready 路由都需要一个具备只读权限的独立账号，')
-    $lines.Add('  而仓库里 appsettings 的连接串（含被命名为 WMS_ReadOnly 的那条）目前全部使用 root。')
+    $lines.Add('  「ready 为 0」不等于技能坏了：每条 ready 路由都需要凭据文件里存在对应的 4 个键。')
+    $lines.Add('  高权限账号（如 root）只告警、不阻塞只读查询；写操作另需 Exec 摘要确认。')
     $lines.Add('')
 
     # --- 请求的路由 ---
@@ -335,8 +354,8 @@ function Invoke-Validate {
         $lines.Add(('SQL 静态校验（来源：{0}，哈希：{1}）' -f $sqlSource, $sqlCheck.TextHash))
         $lines.Add(('  结论    ：{0}' -f $sqlCheck.Reason))
         $lines.Add(('  语句种类：{0}，语句条数：{1}' -f $sqlCheck.Kind, $sqlCheck.StatementCount))
-        $lines.Add('  只校验静态安全性；本阶段不生成执行计划（ExplainPlan 恒为 null）。')
-        $lines.Add('  注意：关键字拦截是第二道防线，不等于数据库授权。真正兜底的是只读账号的权限。')
+        $lines.Add('  只校验静态安全性；不生成执行计划（ExplainPlan 恒为 null）。')
+        $lines.Add('  注意：关键字拦截是第二道防线，不等于数据库授权。真正兜底的是账号权限与单语句限制。')
         if (-not $sqlCheck.Ok) {
             # 与「目标没配好」（5）分开：这是 SQL 本身被拒绝，改的是 SQL 而不是配置。
             $exitCode = $EXIT_HARD_FAILURE
@@ -391,6 +410,276 @@ function Invoke-Validate {
 }
 
 # ---------------------------------------------------------------------------
+# 执行模式（Check / Query / File / Exec）
+# ---------------------------------------------------------------------------
+
+function Resolve-ExecutionTarget {
+    # 执行类模式必须同时拿到「一条路由」与「ready 状态」。没有第三种结果。
+    param(
+        $Routes,
+        $Policy,
+        [string]$FileState,
+        $CredentialValues
+    )
+
+    $requested = Resolve-RequestedRoute -Routes $Routes -Policy $Policy
+    if (-not $requested.Ok) {
+        return [pscustomobject]@{
+            Ok         = $false
+            Code       = [int]$requested.Code
+            Message    = [string]$requested.Message
+            Route      = $null
+            Status     = $null
+            Credential = $null
+        }
+    }
+
+    $route = $requested.Route
+    $routeCredential = Get-RouteCredential -Route $route -Values $CredentialValues -Policy $Policy
+    $status = Get-DbOpsRouteStatus -Route $route -FileState $FileState -RouteCredential $routeCredential -Policy $Policy
+
+    if ([string]$status.EffectiveStatus -ne 'ready') {
+        return [pscustomobject]@{
+            Ok         = $false
+            Code       = $EXIT_NOT_READY
+            Message    = [string]$status.Reason
+            Route      = $route
+            Status     = $status
+            Credential = $routeCredential
+        }
+    }
+
+    return [pscustomobject]@{
+        Ok         = $true
+        Code       = $EXIT_OK
+        Message    = ''
+        Route      = $route
+        Status     = $status
+        Credential = $routeCredential
+    }
+}
+
+function Read-DbOpsSqlInput {
+    param(
+        [string]$Mode,
+        [string]$Sql,
+        [string]$SqlPath
+    )
+
+    if ($Mode -eq 'File') {
+        if ([string]::IsNullOrWhiteSpace($SqlPath)) {
+            return [pscustomobject]@{ Ok = $false; Message = '-Mode File 需要 -SqlPath。' }
+        }
+        if (-not (Test-Path -LiteralPath $SqlPath -PathType Leaf)) {
+            return [pscustomobject]@{ Ok = $false; Message = ('SQL 文件不存在：{0}' -f $SqlPath) }
+        }
+        return [pscustomobject]@{ Ok = $true; Text = [IO.File]::ReadAllText($SqlPath) }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Sql)) {
+        return [pscustomobject]@{ Ok = $false; Message = ('-Mode {0} 需要 -Sql 或 -SqlPath。' -f $Mode) }
+    }
+    return [pscustomobject]@{ Ok = $true; Text = $Sql }
+}
+
+function Format-ExecutionTableLines {
+    param(
+        $Envelope,
+        [string]$Format,
+        [int]$MaxCellChars
+    )
+
+    # 信封是 [ordered]@{}（OrderedDictionary）：键走字典索引器，不走 PSObject.Properties。
+    # PSObject.Properties 只看类型自身属性，$dict.PSObject.Properties['Columns'] 是 $null，
+    # 用它读键会得到「永远空」的结果——查询有行却打印不出表头。
+    if ($Envelope -is [System.Collections.IDictionary]) {
+        $columns = @($Envelope['Columns'])
+        $rows = @($Envelope['Rows'])
+    } else {
+        $columns = @(Get-OptionalProperty -Object $Envelope -Name 'Columns' -Default @())
+        $rows = @(Get-OptionalProperty -Object $Envelope -Name 'Rows' -Default @())
+    }
+    if ($columns.Count -eq 0) { return @() }
+    if ($Format -eq 'Tsv') { return @(ConvertTo-Tsv -Columns $columns -Rows $rows) }
+    return @(Format-TableText -Columns $columns -Rows $rows -MaxCellChars $MaxCellChars)
+}
+
+function New-ExecutionEnvelope {
+    param(
+        [string]$Mode,
+        $Route,
+        $RouteCredential,
+        $Result,
+        $SqlCheck
+    )
+
+    $envelope = New-ResultEnvelope -Mode $Mode -Route ([string]$Route.id) -Database ([string]$Route.database) -Success $true
+    $envelope.ReadOnlyUser = Get-MaskedUserName -Name ([string]$RouteCredential.Config['DB_USER'])
+    $envelope.RowsReturned = [int]$Result.RowsReturned
+    $envelope.Columns = @($Result.Columns)
+    $envelope.Rows = @($Result.Rows)
+    $envelope.ElapsedMs = [int]$Result.ElapsedMs
+    $envelope.LimitReached = [bool]$Result.Truncated
+    $envelope.PossiblyTruncated = [bool]$Result.PossiblyTruncated
+    $envelope['Details'] = [ordered]@{
+        Driver       = [string]$Result.Driver
+        AffectedRows = $Result.AffectedRows
+        SqlHash      = $(if ($null -eq $SqlCheck) { $null } else { [string]$SqlCheck.TextHash })
+    }
+    return $envelope
+}
+
+function Invoke-CheckMode {
+    param($Route, $RouteCredential, $Policy, $DriverInfo, [string]$Format = 'Table')
+
+    $result = Invoke-DbOpsSql -Config $RouteCredential.Config -Database ([string]$Route.database) `
+        -QueryText 'SELECT DATABASE() AS db_name, VERSION() AS mysql_version' -Mode 'query' `
+        -DriverInfo $DriverInfo -MaxRows 10 `
+        -MaxCellChars ([int]$Policy.output.maxCellChars) -MaxResultBytes ([int]$Policy.output.maxResultBytes)
+
+    $envelope = New-ExecutionEnvelope -Mode 'Check' -Route $Route -RouteCredential $RouteCredential -Result $result -SqlCheck $null
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add(('Check: OK（驱动 {0}，{1}ms）' -f $result.Driver, $result.ElapsedMs))
+    $lines.Add(('路由：{0}' -f $Route.id))
+    $lines.Add(('连接：{0}' -f (Get-RedactedRouteInfo -Route $Route)))
+    $lines.Add(('账号：{0}' -f (Get-MaskedUserName -Name ([string]$RouteCredential.Config['DB_USER']))))
+    if ($Format -ne 'Json') {
+        $lines.Add('')
+        foreach ($line in (Format-ExecutionTableLines -Envelope $envelope -Format $Format -MaxCellChars ([int]$Policy.output.maxCellChars))) {
+            $lines.Add($line)
+        }
+    }
+    return New-DbOpsResult -Code $EXIT_OK -Lines $lines.ToArray() -StderrLines @() -Envelope $envelope
+}
+
+function Invoke-QueryMode {
+    param(
+        [string]$Mode,
+        $Route,
+        $RouteCredential,
+        $Policy,
+        $DriverInfo,
+        [string]$SqlText,
+        [int]$Limit,
+        [string]$Format
+    )
+
+    $check = Test-ReadOnlySql -Text $SqlText
+    if (-not $check.Ok) {
+        return New-DbOpsResult -Code $EXIT_HARD_FAILURE -Lines @() `
+            -StderrLines @(('SQL 被只读模式拒绝：{0}' -f $check.Reason)) -Envelope $null
+    }
+
+    $effectiveLimit = $Limit
+    if ($effectiveLimit -lt 0) { $effectiveLimit = [int]$Policy.output.maxRows }
+
+    $queryText = $SqlText
+    if ($effectiveLimit -gt 0) { $queryText = Add-SqlLimitIfMissing -Text $queryText -Limit $effectiveLimit }
+
+    $result = Invoke-DbOpsSql -Config $RouteCredential.Config -Database ([string]$Route.database) `
+        -QueryText $queryText -Mode 'query' -DriverInfo $DriverInfo -MaxRows $effectiveLimit `
+        -MaxCellChars ([int]$Policy.output.maxCellChars) -MaxResultBytes ([int]$Policy.output.maxResultBytes)
+
+    $envelope = New-ExecutionEnvelope -Mode $Mode -Route $Route -RouteCredential $RouteCredential -Result $result -SqlCheck $check
+    if ($effectiveLimit -gt 0) { $envelope.Limit = $effectiveLimit } else { $envelope.Limit = $null }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add(('路由：{0}  库：{1}' -f $Route.id, $Route.database))
+    $lines.Add(('账号：{0}  驱动：{1}  行数：{2}  耗时：{3}ms' -f (Get-MaskedUserName -Name ([string]$RouteCredential.Config['DB_USER'])), $result.Driver, $result.RowsReturned, $result.ElapsedMs))
+    if ([bool]$result.Truncated) {
+        $lines.Add(('注意：达到上限 {0} 行，可能还有更多。' -f $effectiveLimit))
+    } elseif ([bool]$result.PossiblyTruncated) {
+        $lines.Add('注意：结果按单元格或字节上限被裁剪，可能不完整。')
+    }
+    if ($Format -ne 'Json') {
+        $lines.Add('')
+        foreach ($line in (Format-ExecutionTableLines -Envelope $envelope -Format $Format -MaxCellChars ([int]$Policy.output.maxCellChars))) {
+            $lines.Add($line)
+        }
+    }
+
+    return New-DbOpsResult -Code $EXIT_OK -Lines $lines.ToArray() -StderrLines @() -Envelope $envelope
+}
+
+function Invoke-ExecMode {
+    param(
+        $Route,
+        $RouteCredential,
+        $Policy,
+        $DriverInfo,
+        [string]$SqlText,
+        [string]$Confirm
+    )
+
+    # 只读语句请走 Query：那里不需要确认，也不该被 Exec 的摘要流程拖慢。
+    $readOnly = Test-ReadOnlySql -Text $SqlText
+    if ($readOnly.Ok) {
+        return New-DbOpsResult -Code $EXIT_HARD_FAILURE -Lines @() `
+            -StderrLines @('这条 SQL 是只读语句，请用 -Mode Query（查询不需要确认）。') -Envelope $null
+    }
+
+    $masked = Get-MaskedSql -Text $SqlText
+    $statementCount = Test-SqlStatementCount -Masked $masked
+    if ($statementCount -ne 1) {
+        return New-DbOpsResult -Code $EXIT_HARD_FAILURE -Lines @() `
+            -StderrLines @(('Exec 一次只允许一条语句，检测到 {0} 条。' -f $statementCount)) -Envelope $null
+    }
+
+    if (-not [bool](Get-OptionalProperty -Object $Policy.exec -Name 'allowWrite' -Default $false)) {
+        return New-DbOpsResult -Code $EXIT_NOT_READY -Lines @() `
+            -StderrLines @('写操作总闸门关闭：policy.exec.allowWrite=false。') -Envelope $null
+    }
+    if (-not [bool](Get-OptionalProperty -Object $Route -Name 'allowWrite' -Default $false)) {
+        return New-DbOpsResult -Code $EXIT_NOT_READY -Lines @() `
+            -StderrLines @(('路由 {0} 未开启 allowWrite。' -f $Route.id)) -Envelope $null
+    }
+
+    $digest = Get-Sha256Short -Text ("{0}`n{1}`n{2}" -f $Route.id, $Route.database, $SqlText) -Length 16
+
+    if ([string]::IsNullOrWhiteSpace($Confirm)) {
+        $lines = New-Object System.Collections.Generic.List[string]
+        $lines.Add('写操作需要人工审核。下面是要执行的计划：')
+        $lines.Add(('路由：{0}' -f $Route.id))
+        $lines.Add(('库  ：{0}' -f $Route.database))
+        $lines.Add(('账号：{0}' -f (Get-MaskedUserName -Name ([string]$RouteCredential.Config['DB_USER']))))
+        $lines.Add(('类型：{0}' -f (Get-SqlStatementKind -Masked $masked)))
+        $lines.Add(('摘要：{0}' -f $digest))
+        $lines.Add('')
+        $lines.Add('SQL：')
+        foreach ($sqlLine in @($SqlText -split "\r?\n")) { $lines.Add('  ' + $sqlLine) }
+        $lines.Add('')
+        $lines.Add(('确认无误后重新执行，并加：-Confirm {0}' -f $digest))
+        $lines.Add('计划（路由/库/SQL 原文）任何一处变化都会让摘要失配，需要重新确认。')
+        return New-DbOpsResult -Code $EXIT_MISSING_DIGEST -Lines $lines.ToArray() -StderrLines @() -Envelope $null
+    }
+
+    if ($Confirm -ne $digest) {
+        return New-DbOpsResult -Code $EXIT_DIGEST_MISMATCH -Lines @() `
+            -StderrLines @('确认摘要不匹配。请重新核对计划与 SQL；计划变化后摘要会变。') -Envelope $null
+    }
+
+    $result = Invoke-DbOpsSql -Config $RouteCredential.Config -Database ([string]$Route.database) `
+        -QueryText $SqlText -Mode 'exec' -DriverInfo $DriverInfo -MaxRows 0 `
+        -MaxCellChars ([int]$Policy.output.maxCellChars) -MaxResultBytes ([int]$Policy.output.maxResultBytes)
+
+    $envelope = New-ExecutionEnvelope -Mode 'Exec' -Route $Route -RouteCredential $RouteCredential -Result $result -SqlCheck $null
+    $envelope['Details']['PlanDigest'] = $digest
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add(('Exec: OK（驱动 {0}，{1}ms）' -f $result.Driver, $result.ElapsedMs))
+    $lines.Add(('路由：{0}  库：{1}  摘要：{2}' -f $Route.id, $Route.database, $digest))
+    if ($null -ne $result.AffectedRows) { $lines.Add(('影响行数：{0}' -f $result.AffectedRows)) }
+    if ([int]$result.RowsReturned -gt 0) {
+        foreach ($line in (Format-ExecutionTableLines -Envelope $envelope -Format 'Table' -MaxCellChars ([int]$Policy.output.maxCellChars))) {
+            $lines.Add($line)
+        }
+    }
+
+    return New-DbOpsResult -Code $EXIT_OK -Lines $lines.ToArray() -StderrLines @() -Envelope $envelope
+}
+
+# ---------------------------------------------------------------------------
 # 主流程（返回结果对象，不打印、不退出）
 # ---------------------------------------------------------------------------
 
@@ -418,28 +707,16 @@ function Invoke-DbOpsMain {
     $routes = Get-DbOpsRoutes -Root $skillRoot
     $credentialsPath = Resolve-CredentialsPath -Policy $policy
 
-    if ([string]::IsNullOrWhiteSpace($Format)) { $Format = [string]$policy.output.defaultFormat }
+    # -Format 的默认值要写回脚本作用域：顶层打印与秘密断言都读它，
+    # 只写函数局部变量会让「默认 Table」在顶层看不见。
+    $script:EffectiveFormat = [string]$Format
+    if ([string]::IsNullOrWhiteSpace($script:EffectiveFormat)) { $script:EffectiveFormat = [string]$policy.output.defaultFormat }
 
-    # 阶段 1 的执行闸门：Check/Query/File 需要执行器，Exec 需要写权限与确认链，都还没实现。
-    # 这里必须硬失败而不是「返回 0 行」：一个静默成功的查询入口会被当成「查到了，就是没有数据」。
-    if ($Mode -eq 'Check' -or $Mode -eq 'Query' -or $Mode -eq 'File') {
-        $message = '-Mode {0} 属于阶段 2，本阶段未实现。' +
-            '阶段 1 只交付离线能力：-Mode Validate 与 -ListTargets。'
-        $message = $message -f $Mode
-        return New-DbOpsResult -Code $EXIT_HARD_FAILURE -Lines @() -StderrLines @($message) -Envelope $null
-    }
-    if ($Mode -eq 'Exec') {
-        $message = '-Mode Exec 属于阶段 2，本阶段未实现（policy.exec.allowWrite={0}）。' +
-            '写操作走 workflows/exec-flow.md 描述的受控执行流程。'
-        $message = $message -f $policy.exec.allowWrite
-        return New-DbOpsResult -Code $EXIT_HARD_FAILURE -Lines @() -StderrLines @($message) -Envelope $null
-    }
-    if ($Mode -ne 'Validate' -and $Mode -ne 'ListTargets') {
+    $knownModes = @('Validate', 'ListTargets', 'Check', 'Query', 'File', 'Exec')
+    if ($knownModes -notcontains $Mode) {
         return New-DbOpsResult -Code $EXIT_HARD_FAILURE -Lines @() -StderrLines @(('未处理的模式：{0}' -f $Mode)) -Envelope $null
     }
 
-    # 阶段 1 的 RunId 只为信封存在。日志开关即使打开也不在这里落盘：
-    # Validate / ListTargets 必须是彻底只读的，连日志目录都不该被创建。
     Initialize-RunLog -RunId ([guid]::NewGuid().ToString('N')) -LogPath $null -StatusPath $null -Json:$Json
 
     $fileStateInfo = Get-CredentialsFileState -Path $credentialsPath -Policy $policy
@@ -458,9 +735,31 @@ function Invoke-DbOpsMain {
 
     if ($Mode -eq 'ListTargets') {
         $result = Invoke-ListTargets -Routes $routes -Policy $policy -FileState $fileState -CredentialValues $credentialValues
-    } else {
+    } elseif ($Mode -eq 'Validate') {
         $result = Invoke-Validate -SkillRoot $skillRoot -Routes $routes -Policy $policy -FileState $fileState `
             -CredentialValues $credentialValues -CredentialsPath $credentialsPath -CredentialErrors $credentialErrors
+    } else {
+        $execution = Resolve-ExecutionTarget -Routes $routes -Policy $policy -FileState $fileState -CredentialValues $credentialValues
+        if (-not $execution.Ok) {
+            $result = New-DbOpsResult -Code ([int]$execution.Code) -Lines @() -StderrLines @([string]$execution.Message) -Envelope $null
+        } else {
+            $driverInfo = Resolve-DbOpsDriver -Requested $Driver -JdbcJar $JdbcJar
+
+            if ($Mode -eq 'Check') {
+                $result = Invoke-CheckMode -Route $execution.Route -RouteCredential $execution.Credential -Policy $policy -DriverInfo $driverInfo -Format $script:EffectiveFormat
+            } else {
+                $sqlInput = Read-DbOpsSqlInput -Mode $Mode -Sql $Sql -SqlPath $SqlPath
+                if (-not $sqlInput.Ok) {
+                    $result = New-DbOpsResult -Code $EXIT_INVALID_INPUT -Lines @() -StderrLines @([string]$sqlInput.Message) -Envelope $null
+                } elseif ($Mode -eq 'Exec') {
+                    $result = Invoke-ExecMode -Route $execution.Route -RouteCredential $execution.Credential -Policy $policy `
+                        -DriverInfo $driverInfo -SqlText ([string]$sqlInput.Text) -Confirm $Confirm
+                } else {
+                    $result = Invoke-QueryMode -Mode $Mode -Route $execution.Route -RouteCredential $execution.Credential -Policy $policy `
+                        -DriverInfo $driverInfo -SqlText ([string]$sqlInput.Text) -Limit $Limit -Format $script:EffectiveFormat
+                }
+            }
+        }
     }
 
     # 「输出里没有凭据值」是一条可执行检查，不是文档里的承诺，而且必须在**拿得到凭据值的
@@ -480,7 +779,8 @@ function Get-DbOpsRenderableText {
     $parts = New-Object System.Collections.Generic.List[string]
     $parts.Add((@($Result.Lines) -join "`r`n"))
     $parts.Add((@($Result.StderrLines) -join "`r`n"))
-    if ($Json -and $null -ne $Result.Envelope) {
+    $emitJson = ($Json -or $script:EffectiveFormat -eq 'Json')
+    if ($emitJson -and $null -ne $Result.Envelope) {
         # 与顶层同参：-InputObject 阻止 ConvertTo-Json 把单元素数组展开成裸对象。
         $parts.Add((ConvertTo-Json -InputObject $Result.Envelope -Depth 12))
     }
@@ -494,11 +794,12 @@ function Get-DbOpsRenderableText {
 $exitCode = $EXIT_HARD_FAILURE
 $result = $null
 $jsonRendered = ''
+$script:EffectiveFormat = 'Table'
 
 try {
     $result = Invoke-DbOpsMain -Mode $Mode -Root $Root
     $exitCode = [int]$result.Code
-    if ($Json -and $null -ne $result.Envelope) {
+    if (($Json -or $script:EffectiveFormat -eq 'Json') -and $null -ne $result.Envelope) {
         $jsonRendered = ConvertTo-Json -InputObject $result.Envelope -Depth 12
     }
 } catch {
@@ -509,7 +810,7 @@ try {
 
 foreach ($line in @($result.StderrLines)) { Write-DbOpsError $line }
 
-if ($Json -and $null -ne $result.Envelope) {
+if (($Json -or $script:EffectiveFormat -eq 'Json') -and $null -ne $result.Envelope) {
     Write-Output $jsonRendered
 } else {
     foreach ($line in @($result.Lines)) { Write-Output $line }

@@ -1,0 +1,1 @@
+{"key":"instock-order-sync","name":"入库单增量同步","command":"wms/automationwarehouse/sync_stock_in.js","schedule":"45 */2 * * * ?","enabled":true}

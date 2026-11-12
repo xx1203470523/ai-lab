@@ -1,0 +1,1 @@
+{"key":"quality-timeout-notice-test","name":"测试环境_消息推送_获取质检结果后上架超时通知","command":"QYWXNotify/qualcheck_notify.js","schedule":"10 */2 * * * ?","enabled":true}

@@ -297,7 +297,7 @@ function Get-MaskedUserName {
 # ---------------------------------------------------------------------------
 
 function Get-Sha256Short {
-    # 供阶段 2 的 PlanDigest 使用；本阶段只被 Validate 的自检路径引用。
+    # 供 Exec 的 PlanDigest 与 Validate 的 SQL 留痕使用。
     # 用 SHA256 前 N 个十六进制字符，避免把整段 SQL 放进日志或命令行。
     param(
         [string]$Text,

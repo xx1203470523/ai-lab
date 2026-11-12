@@ -29,7 +29,9 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\exec.ps1')
 
 $KnownFields = @('kind', 'projects')
-$KnownItemFields = @('id', 'projectRoot', 'releaseScript', 'outputDir', 'expectedOutput', 'versionMarker', 'manifestPath', 'backendConfigFile')
+# backendConfigGuard 由编排层（publish.ps1）按目标环境判定，生产者只把它当合法的可选字段放过。
+$KnownItemFields = @('id', 'projectRoot', 'releaseScript', 'outputDir', 'expectedOutput', 'versionMarker', 'manifestPath', 'backendConfigFile', 'versionPush', 'backendConfigGuard')
+$KnownVersionPushFields = @('enabled', 'files', 'commitMessage')
 $Kind = 'pda'
 # manifest.json 的 versionName 是**裸四段**（1.4.1.14），不带 release.json 里的 v 前缀。
 $BareVersionPattern = '^(\d+)\.(\d+)\.(\d+)\.(\d+)$'
@@ -65,6 +67,37 @@ function Test-ApkArtifact([string]$ApkPath) {
         }
     } finally { $zip.Dispose() }
     return [pscustomobject]@{ Bytes = $info.Length; Entries = $entries }
+}
+
+function Resolve-VersionPush([object]$Project, [string]$PdaRoot, [string]$Context) {
+    # PDA APK 每次构建都会自增版本号（build-apk.ps1 的 [1/6] 改 manifest.json，
+    # [4/6] 同步 build.gradle）。这两个文件是 git 跟踪的源码，所以发布成功后
+    # 必须由操作者通过 git 技能把它们提交并推送到上游。
+    #
+    # 本函数只**描述**要推什么，不执行任何 git 写操作——提交与推送发生在打包完成之后，
+    # 由 git 技能负责（rules R15）。配置里没有这一块就视为「不回推」，不报错。
+    $block = Get-OptionalProperty $Project 'versionPush' $null
+    if ($null -eq $block) { return $null }
+    Assert-NoUnknownFields $block $KnownVersionPushFields "$Context.versionPush"
+    Assert-RequiredFields $block @('files') "$Context.versionPush"
+    $files = @(Get-OptionalProperty $block 'files' @())
+    $resolved = @()
+    $relative = @()
+    foreach ($relativePath in $files) {
+        $text = ([string]$relativePath).Trim()
+        if ([string]::IsNullOrWhiteSpace($text)) { throw "配置存在空路径：$Context.versionPush.files" }
+        $full = Resolve-FullPath $text $PdaRoot
+        # 回推文件必须落在 PDA 项目根之内：写错的相对路径会让 git 技能去提交仓库里的别的东西。
+        if (-not (Test-Within $full $PdaRoot)) { throw "PDA 版本推送路径越界（必须落在 $PdaRoot 内）：$full" }
+        $resolved += $full
+        $relative += $text
+    }
+    return [pscustomobject]@{
+        Enabled       = [bool](Get-OptionalProperty $block 'enabled' $true)
+        Files         = @($resolved)
+        RelativeFiles = @($relative)
+        CommitMessage = [string](Get-OptionalProperty $block 'commitMessage' '')
+    }
 }
 
 try {
@@ -113,6 +146,17 @@ try {
         foreach ($guarded in @($pdaRoot, $releaseScript)) {
             if (-not (Test-CmdQuotable $guarded)) {
                 throw "PDA 参数无法安全传给 cmd.exe（含 & | < > ^ % `" ! 之一）：$guarded"
+            }
+        }
+
+        # 发布后回推配置：只解析与校验，不执行 git。列出的都是源码文件，构建前就必须存在；
+        # 这里提前挡下拼错的路径，避免构建跑完才发现推不了。
+        $versionPush = Resolve-VersionPush $project $pdaRoot "projects/$Kind.json 的 $id 条目"
+        if ($null -ne $versionPush -and $versionPush.Enabled) {
+            foreach ($pushFile in @($versionPush.Files)) {
+                if (-not (Test-Path -LiteralPath $pushFile -PathType Leaf)) {
+                    throw "PDA 版本推送文件不存在：$pushFile（配置项 versionPush.files）"
+                }
             }
         }
 
@@ -170,14 +214,26 @@ try {
         $apkStats = Test-ApkArtifact $apk.FullName
 
         Write-Event 'pda-output' 'validated' $id ("APK {0}，{1} 字节，{2} 个归档条目，版本 {3}" -f $apk.Name, $apkStats.Bytes, $apkStats.Entries, $apkVersion)
-        $results += [ordered]@{
-            id           = $id
-            kind         = $Kind
-            artifactPath = $apk.FullName
-            artifactName = $apk.Name
-            apkVersion   = $apkVersion
-            evidence     = [ordered]@{ files = 1; bytes = $apkStats.Bytes; entries = $apkStats.Entries; newest = $apk.CreationTime.ToString('o') }
+        $resultItem = [ordered]@{
+            id            = $id
+            kind          = $Kind
+            artifactPath  = $apk.FullName
+            artifactName  = $apk.Name
+            apkVersion    = $apkVersion
+            versionBefore = $currentVersion
+            versionAfter  = $apkVersion
+            evidence      = [ordered]@{ files = 1; bytes = $apkStats.Bytes; entries = $apkStats.Entries; newest = $apk.CreationTime.ToString('o') }
         }
+        if ($null -ne $versionPush) {
+            # 由 publish.ps1 汇总进报告的 PostPublish；本脚本不提交、不推送（rules R15）。
+            $resultItem.versionPush = [ordered]@{
+                enabled       = $versionPush.Enabled
+                files         = @($versionPush.Files)
+                relativeFiles = @($versionPush.RelativeFiles)
+                commitMessage = $versionPush.CommitMessage
+            }
+        }
+        $results += $resultItem
     }
 
     Write-JsonFile $ResultFile ([ordered]@{ succeeded = $true; kind = $Kind; items = $results }) 8

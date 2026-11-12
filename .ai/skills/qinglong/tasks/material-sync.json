@@ -1,0 +1,1 @@
+{"key":"material-sync","name":"物料增量同步","command":"wms/automationwarehouse/sync_material.js","schedule":"12 */30 * * * ?","enabled":true}

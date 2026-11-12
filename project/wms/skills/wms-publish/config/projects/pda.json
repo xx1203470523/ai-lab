@@ -9,7 +9,23 @@
       "expectedOutput": "WMS-PDA_v*.apk",
       "versionMarker": "release/output/version.txt",
       "manifestPath": "manifest.json",
-      "backendConfigFile": "config.js"
+      "backendConfigFile": "config.js",
+      "backendConfigGuard": {
+        "enabled": true,
+        "allowedUrls": {
+          "production": [
+            "https://wms.hymson.com:39000/bpbg"
+          ]
+        }
+      },
+      "versionPush": {
+        "enabled": true,
+        "files": [
+          "manifest.json",
+          "release/simpleDemo/build.gradle"
+        ],
+        "commitMessage": "chore(pda): 发布后同步 APK 版本号到 {version}"
+      }
     }
   ]
 }

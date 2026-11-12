@@ -24,7 +24,8 @@ description: WMS 数据库只读查询与 SQL 脚本管理：按正式/开发/�
 ## Responsibilities
 
 - 只从 `~/.claude/skills/dbsql/.env` 读取连接；项目 `appsettings*.json` 只用于核对主机、库名、租户和实体映射，不复制密码到任何输出或文件。
-- 所有实际连接必须使用用户指定的只读账号。若目标连接没有配置只读账号，停止并报告“缺少只读连接配置”，不得使用 `root`、写账号或从应用连接字符串推导账号。
+- 实际连接使用 `.env` 中为该路由配置的账号。开发库常用 `root`，**只读查询允许使用现有账号**（包括 `root`）：每次执行仍必须通过 `Test-ReadOnlySql` 的守卫，且只执行单条 `SELECT/SHOW/DESCRIBE/EXPLAIN/WITH`。写 SQL 永远只生成、不执行。
+- 不要从应用连接字符串推导账号；账号只能来自 `.env` 的显式配置。
 - 使用 `scripts/dbsql-mysql.ps1` 执行 MySQL 检查和只读查询；不在命令行参数中传密码。
 - 默认只执行读操作：`SELECT`、`SHOW`、`DESCRIBE/DESC`、`EXPLAIN`、`WITH`。写 SQL 只能生成、预检、归档和说明回滚，不执行。
 - 根据代码实体上的 `[SugarTable]`、属性名、`[SugarColumn]`、`[Tenant]` 和软删除字段反推表名、列名与关系；不要臆造字段。优先引用实体文件路径和行号。
@@ -74,7 +75,7 @@ description: WMS 数据库只读查询与 SQL 脚本管理：按正式/开发/�
 # 检查开发库
 & "$env:USERPROFILE/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Check -Environment dev
 
-# 检查指定正式据点；正式库路由必须在 .env 中有独立只读配置
+# 检查指定正式据点；正式库路由必须在 .env 中有独立连接配置
 & "$env:USERPROFILE/.claude/skills/dbsql/scripts/dbsql-mysql.ps1" -Mode Check -Environment prod.lebg
 
 # 只读查询（目标路由由 .env 前缀解析）

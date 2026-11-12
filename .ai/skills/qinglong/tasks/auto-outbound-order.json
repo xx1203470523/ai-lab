@@ -1,0 +1,1 @@
+{"key":"auto-outbound-order","name":"自动生成出货单","command":"AutoCreate/outStockShipment.js","schedule":"52 * * * * ?","enabled":true}

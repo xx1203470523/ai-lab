@@ -90,13 +90,13 @@ LABG   = wms_labg      LEBGSZ = wms_lebgty
 
 ## 当前状态与升级条件
 
-**阶段 1 的预期结果：可能没有任何一条 `prod.*` 达到 `ready`。** 这**不是**技能故障——`ready` 需要「配置齐备 + 一个具备只读权限的独立账号」，而仓库里所有 `appsettings` 连接串（**含被命名为 `WMS_ReadOnly` 的那条**）的用户都是 `root`，会被 `highPrivilegeUserPattern` 判 `blocked`。
+`ready` 需要「配置齐备 + 凭据文件里有该前缀的 4 个键」。高权限账号（`root`）**不再阻塞只读查询**，只在状态依据里告警；仓库里含 `WMS_ReadOnly` 在内的连接串仍用 `root`，因此 `dev.*` 配好凭据后即可直接查询。
 
 | 路由 | 库 | 静态 status | 要升级为 ready 缺什么 |
 |---|---|---|---|
-| `dev.lebgjm` / `dev.warehouse` / `dev.shared` / `dev.logs` | dev 各库 | `ready`（配置层） | 补合规只读账号（当前全是 root → `blocked`） |
-| `stag.lebgjs` / `stag.shared` | `wms_lebgjs` / `wms_lebg_shared` | `ready`（配置层） | 同上 |
-| `prod.shared` / `prod.logs` / `prod.warehouse` | `wms_shared` / `wms_log` / `wms_lebgjm_automation_warehouse` | `ready`（配置层） | 同上。`prod.logs` 是仓库里**唯一**已用非 root 账号（`wms_log`）的连接，最有可能先达到可用 |
+| `dev.lebgjm` / `dev.warehouse` / `dev.shared` / `dev.logs` | dev 各库 | `ready`（配置层） | 凭据文件里补 `DEV_*` 前缀；`dev.lebgjm` 已配置 |
+| `stag.lebgjs` / `stag.shared` | `wms_lebgjs` / `wms_lebg_shared` | `ready`（配置层） | 补 `STAG_*` 前缀 |
+| `prod.shared` / `prod.logs` / `prod.warehouse` | `wms_shared` / `wms_log` / `wms_lebgjm_automation_warehouse` | `ready`（配置层） | 补对应前缀。`prod.logs` 已配置并验证连通（`wms_log`） |
 | `prod.lebgjm` | `wms_lebg`@10.10.76.167 | `needs-review` | 人工确认据点 LEBGJM 与 `wms_lebg` 的对应（提交版本 `DefaultSite=BPBG`，无佐证） |
 | `prod.bpbg` | `wms_bpbg`@10.10.76.166 | `needs-review` | 人工确认 BPBG 是否在用、`wms_bpbg` 是否真实存在（配置里该段**被注释**） |
 | `prod.lebg` / `prod.lebgsz` / `prod.lebgty` / `prod.lebgch` / `prod.labg` / `prod.lebgjs` | `wms_lebgty` 等 | `needs-review` | 只有工具 ini 证据，且无 host/port：需人工提供目标与库名对应 |

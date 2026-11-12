@@ -17,7 +17,7 @@
 #   关键字与分号判定只在掩码上做，误报随之消失。
 #
 # 同时保留两份文本
-#   掩码**只**用于关键字与分号判定。原文必须留着：错误回显、阶段 2 的 LIMIT 追加、
+#   掩码**只**用于关键字与分号判定。原文必须留着：错误回显、Query/File 的 LIMIT 追加、
 #   以及给用户看「你提交的到底是哪句话」，都需要真实文本；在掩码上做这些会把
 #   `LIMIT 10` 里的数字一起抹掉。
 
@@ -164,7 +164,7 @@ function Test-SqlStatementCount {
 }
 
 function Test-SqlHasTopLevelLimit {
-    # 供阶段 2 的 LIMIT 追加使用：判断语句结尾是否已有 LIMIT/OFFSET。
+    # 供 Query/File 的 LIMIT 追加使用：判断语句结尾是否已有 LIMIT/OFFSET。
     #
     # 旧实现用 `-notmatch '\bLIMIT\s+\d+\s*;?\s*$'` 判断，两个缺陷：
     #   1) `LIMIT 10 OFFSET 5` 结尾判不出来，会再追加一个 LIMIT，语句直接语法错误；
@@ -178,7 +178,7 @@ function Test-SqlHasTopLevelLimit {
 }
 
 function Add-SqlLimitIfMissing {
-    # 阶段 2 会用；本阶段由离线测试直接覆盖，保证「追加」这件事只有一处实现。
+    # Query / File 执行前会用到；离线测试直接覆盖，保证「追加」这件事只有一处实现。
     # 追加发生在**原文**上，判断发生在掩码上——两者分工不能串。
     param(
         [string]$Text,
@@ -189,6 +189,10 @@ function Add-SqlLimitIfMissing {
     if ([string]::IsNullOrWhiteSpace($Text)) { return $Text }
 
     $masked = Get-MaskedSql -Text $Text
+    # 只有 SELECT / WITH 能合法地在末尾追加 LIMIT。给 SHOW / DESCRIBE / EXPLAIN 追加
+    # 会直接造出语法错误的语句（例如 SHOW TABLES LIMIT 100），而这类语句本身返回量很小。
+    $kind = Get-SqlStatementKind -Masked $masked
+    if ($kind -ne 'SELECT' -and $kind -ne 'WITH') { return $Text }
     if (Test-SqlHasTopLevelLimit -Masked $masked) { return $Text }
 
     $trimmed = $Text.TrimEnd()
@@ -306,7 +310,7 @@ function Assert-ReadOnlySql {
 }
 
 function Test-WriteSql {
-    # 阶段 2 的 Exec 闸门会用。本阶段只做分类，不执行任何东西。
+    # 只做分类，不执行任何东西。Exec 的闸门以 Test-ReadOnlySql 的结论为准。
     param([string]$Text)
 
     $masked = Get-MaskedSql -Text $Text

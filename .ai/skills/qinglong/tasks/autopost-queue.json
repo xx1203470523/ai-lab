@@ -1,0 +1,1 @@
+{"key":"autopost-queue","name":"自动过账队列","command":"AutoPost/addqueeue.js","schedule":"6 0/30 * * * ?","enabled":true}

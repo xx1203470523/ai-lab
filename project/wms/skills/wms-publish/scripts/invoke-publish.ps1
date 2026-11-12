@@ -160,6 +160,23 @@ function ConvertFrom-Report([byte[]]$Bytes) {
     catch { return $null }
 }
 
+function Write-PostPublish([object]$ReportJson) {
+    # 发布后动作由操作者用 git 技能执行，发布脚本只报告（rules R15）。
+    # 预检阶段打印是确认内容，执行阶段打印是待办清单，两处都不能省。
+    $postPublish = @(Get-ReportProperty $ReportJson 'PostPublish')
+    if ($postPublish.Count -eq 0) { return }
+    Write-Output ''
+    Write-Output '--- 发布后动作（发布脚本不执行，打包成功后用 git 技能完成）---'
+    foreach ($pushEntry in $postPublish) {
+        $relativeFiles = @(Get-ReportProperty $pushEntry 'RelativeFiles')
+        Write-Output ('  - 项目 {0}，版本 {1}：提交并推送 {2}' -f `
+            [string](Get-ReportProperty $pushEntry 'Id'), `
+            [string](Get-ReportProperty $pushEntry 'Version'), `
+            ($relativeFiles -join '、'))
+        Write-Output ('    提交标题：{0}' -f [string](Get-ReportProperty $pushEntry 'CommitMessage'))
+    }
+}
+
 function Write-Stage([string]$Stage, $Report) {
     if ($Json) { return }
     if ($Stage -eq 'Preflight') {
@@ -174,6 +191,7 @@ function Write-Stage([string]$Stage, $Report) {
             Write-Output '--- 将被删除/覆盖的原产物（确认摘要必须包含这些）---'
             $destructive | ForEach-Object { Write-Output ('  - {0}' -f $_) }
         }
+        Write-PostPublish $Report.Json
         return
     }
     # 执行阶段的完整报告里有 Plan 与 config.js 全文，重复打印只是噪音；这里只摘要点，
@@ -190,6 +208,7 @@ function Write-Stage([string]$Stage, $Report) {
     }
     $logPath = [string](Get-ReportProperty $json 'LogPath')
     if (-not [string]::IsNullOrWhiteSpace($logPath)) { Write-Output ('日志：{0}' -f $logPath) }
+    Write-PostPublish $json
 }
 
 function Write-RawFallback([string]$Stage, [byte[]]$Bytes) {

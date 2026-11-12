@@ -43,10 +43,6 @@
   },
 
   "exec": {
-    "allowWrite": false,
-    "requireDigest": true,
-    "requireTransaction": true,
-    "requireBackup": true,
-    "reserved": true
+    "allowWrite": true
   }
 }

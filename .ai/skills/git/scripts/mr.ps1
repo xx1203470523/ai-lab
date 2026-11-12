@@ -89,16 +89,49 @@ if ([string]::IsNullOrWhiteSpace($remoteUrl)) {
 
 $hostName = $null
 $projectPath = $null
-if ($remoteUrl -match '^(?:[a-z+]+://)?(?:[^@/]+@)?(?<host>[^:/]+)(?::\d+)?[/:](?<path>.+?)(?:\.git)?$') {
+$remotePort = 0
+if ($remoteUrl -match '^(?:[a-z+]+://)?(?:[^@/]+@)?(?<host>[^:/]+)(?::(?<port>\d+))?[/:](?<path>.+?)(?:\.git)?$') {
     $hostName = $Matches['host']
     $projectPath = $Matches['path'] -replace '\.git$', ''
+    if (-not [string]::IsNullOrWhiteSpace([string]$Matches['port'])) { $remotePort = [int]$Matches['port'] }
 }
 
+$gitlabDetectedBy = $null
 $isGitLab = $false
 if (-not [string]::IsNullOrWhiteSpace($hostName)) {
     $lower = $hostName.ToLowerInvariant()
-    $isGitLab = ($lower -eq 'gitlab' -or $lower -eq 'gitlab.com' -or
-        $lower.StartsWith('gitlab.') -or $lower.Contains('.gitlab.'))
+    if ($lower -eq 'gitlab' -or $lower -eq 'gitlab.com' -or
+        $lower.StartsWith('gitlab.') -or $lower.Contains('.gitlab.')) {
+        $isGitLab = $true
+        $gitlabDetectedBy = 'domain'
+    }
+}
+
+$glabAvailable = $null -ne (Get-Command -Name 'glab' -ErrorAction SilentlyContinue)
+
+if (-not $isGitLab -and $glabAvailable) {
+    # 自建 GitLab 常用 IP:端口 接入（例如 10.10.80.231:8052），域名启发式认不出来，
+    # 于是完整的 MR 查询被无谓降级成 not-gitlab（2026-11-10 实测）。
+    # 判据取 glab 的**本地登录配置**：`glab auth status` 会列出它已配置的 host 与
+    # REST API Endpoint，命中即说明这台主机说 GitLab 协议，不需要任何网络探测。
+    # 反过来说，glab 里没有这台主机时 MR 本来也查不了，此时仍走 not-gitlab 降级。
+    $authStatus = Invoke-NativeCapture -FilePath 'glab' -Arguments @('auth', 'status') -TimeoutSeconds 30
+    Add-CommandRun $authStatus
+    $authLines = @(@($authStatus.stdout) + @($authStatus.stderr) | ForEach-Object { [string]$_ })
+    if (-not [string]::IsNullOrWhiteSpace($hostName) -and $hostName.Contains('.')) {
+        # 只接受带点的主机名/IP：单段主机名（如测试里本地路径被解析出的盘符 "C"）
+        # 会在 glab 输出的任意文本里误命中。
+        $hostPattern = [regex]::Escape($hostName)
+        if ($remotePort -gt 0) { $hostPattern = $hostPattern + ':' + $remotePort }
+        $hostRegex = '(?i)(?<![\w.-])' + $hostPattern + '(?![\w.-])'
+        foreach ($line in $authLines) {
+            if ($line -match $hostRegex) {
+                $isGitLab = $true
+                $gitlabDetectedBy = 'glab-auth'
+                break
+            }
+        }
+    }
 }
 
 if (-not $isGitLab) {
@@ -106,7 +139,7 @@ if (-not $isGitLab) {
     Write-GitSkillResult -Result (New-GitSkillResult -Action $actionName -Status 'blocked' `
             -Reason "远端主机 $hostName 不是 GitLab，无法查询 MR。推送本身不受影响。" `
             -RepoRoot $repoRoot -ErrorCode 'not-gitlab' `
-            -Data ([pscustomobject]@{ remoteUrl = $remoteUrl; host = $hostName; sourceBranch = $sourceBranch; targetBranch = $targetBranch }) `
+            -Data ([pscustomobject]@{ remoteUrl = $remoteUrl; host = $hostName; port = $remotePort; sourceBranch = $sourceBranch; targetBranch = $targetBranch }) `
             -CommandsRun $commandsRun) `
         -OutputJson $OutputJson
 }
@@ -115,7 +148,6 @@ if (-not $isGitLab) {
 # glab 查询
 # ---------------------------------------------------------------------------
 
-$glabAvailable = $null -ne (Get-Command -Name 'glab' -ErrorAction SilentlyContinue)
 $existing = @()
 $glabError = $null
 
@@ -217,6 +249,8 @@ $data = [pscustomobject]@{
     repoRoot            = $repoRoot
     remoteUrl           = $remoteUrl
     host                = $hostName
+    port                = $remotePort
+    gitlabDetectedBy    = $gitlabDetectedBy
     projectPath         = $projectPath
     webUrl              = $webUrl
     sourceBranch        = $sourceBranch

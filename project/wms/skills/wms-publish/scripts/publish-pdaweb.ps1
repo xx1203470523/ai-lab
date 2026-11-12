@@ -25,7 +25,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\exec.ps1')
 
 $KnownFields = @('kind', 'projects')
-$KnownItemFields = @('id', 'projectRoot', 'hbuilderxCli', 'manifestPath', 'backendConfigFile', 'outputDir', 'requiredEntries')
+# backendConfigGuard 由编排层（publish.ps1）按目标环境判定，生产者只把它当合法的可选字段放过。
+$KnownItemFields = @('id', 'projectRoot', 'hbuilderxCli', 'manifestPath', 'backendConfigFile', 'outputDir', 'requiredEntries', 'backendConfigGuard')
 $Kind = 'pdaweb'
 
 try {

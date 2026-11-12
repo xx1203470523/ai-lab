@@ -1,0 +1,1 @@
+{"key":"erp-outstock-sync-test","name":"ERP数据同步：出库单同步（测试）","command":"wms/out_stock/outstock_delivery_sync_staging.js","schedule":"50 */2 * * * ?","enabled":true}

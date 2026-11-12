@@ -115,7 +115,60 @@ function Get-PdaSourceHash([string]$ManifestPath, [string]$BackendConfigFile) {
     return ($parts -join '|')
 }
 
-function Get-PlanItems([string]$RepoRoot, [string]$ConfigDir, [string[]]$Kinds, [string[]]$OnlyIds) {
+function Get-ActiveBackendUrls([string]$Path) {
+    # 只认**生效**的赋值行：整行注释以 // 开头，而这条正则要求行首就是标识符，注释行天然不匹配。
+    # 不能用「截断行内 // 再判断」的办法剔注释——URL 自己就含 "//"，那样会把地址截成 "http:"。
+    # 值必须是引号字符串且以 http:// / https:// 开头：config.js 里还有名目一类的普通字符串，
+    # 不能一起当后端地址判。
+    # 无匹配时返回空数组，**调用方必须写 `@(Get-ActiveBackendUrls ...)`**（跨函数返回空数组会被解包成 $null）。
+    $result = @()
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $result }
+    $lineNumber = 0
+    foreach ($line in [IO.File]::ReadAllLines($Path)) {
+        $lineNumber++
+        # 引号用**命名组**回引（\k<quote>），不能用 \2：.NET 会把无名组先编号、命名组排在后面，
+        # \2 指到的是 value 而不是引号，整条正则永远不匹配（2026-11-10 实测踩到）。
+        $match = [regex]::Match($line, '^\s*(?<key>[A-Za-z_$][\w$]*)\s*:\s*(?<quote>[''"])(?<value>[^''"]+)\k<quote>')
+        if (-not $match.Success) { continue }
+        $value = [string]$match.Groups['value'].Value
+        if ($value -notmatch '^https?://') { continue }
+        $result += [ordered]@{ Line = $lineNumber; Key = [string]$match.Groups['key'].Value; Value = $value }
+    }
+    return $result
+}
+
+function Resolve-BackendConfigGuard([object]$Project, [string]$Context, [string[]]$TargetNames) {
+    # 校验 config/projects/*.json 里的 backendConfigGuard 形状，解析成
+    # { Enabled; AllowedUrls = OrderedDictionary 环境 → 地址数组 }。
+    # 语义：allowedUrls 里**列出了某个环境**，该环境发布时生效的后端 URL 就必须精确命中
+    # 列表里的某一个；没列出的环境不做校验（所以 test 不会被本机 localhost 挡住）。
+    $block = Get-OptionalProperty $Project 'backendConfigGuard' $null
+    if ($null -eq $block) { return $null }
+    Assert-NoUnknownFields $block @('enabled', 'allowedUrls') "$Context.backendConfigGuard"
+    $enabled = [bool](Get-OptionalProperty $block 'enabled' $true)
+    $allowedMap = [ordered]@{}
+    $allowedRaw = Get-OptionalProperty $block 'allowedUrls' $null
+    if ($null -ne $allowedRaw) {
+        foreach ($targetProperty in @($allowedRaw.PSObject.Properties)) {
+            $targetName = [string]$targetProperty.Name
+            if ($TargetNames -notcontains $targetName) {
+                throw "配置存在未知的环境名：$Context.backendConfigGuard.allowedUrls.$targetName。允许的环境：$($TargetNames -join '、')"
+            }
+            $urls = @()
+            foreach ($value in @($targetProperty.Value)) {
+                $text = ([string]$value).Trim()
+                if ([string]::IsNullOrWhiteSpace($text)) { throw "配置存在空地址：$Context.backendConfigGuard.allowedUrls.$targetName" }
+                if ($text -notmatch '^https?://') { throw "地址必须以 http:// 或 https:// 开头：$Context.backendConfigGuard.allowedUrls.$targetName → $text" }
+                $urls += $text
+            }
+            if ($urls.Count -eq 0) { throw "配置缺少地址：$Context.backendConfigGuard.allowedUrls.$targetName" }
+            $allowedMap[$targetName] = @($urls)
+        }
+    }
+    return [ordered]@{ Enabled = $enabled; AllowedUrls = $allowedMap }
+}
+
+function Get-PlanItems([string]$RepoRoot, [string]$ConfigDir, [string[]]$Kinds, [string[]]$OnlyIds, [string[]]$TargetNames) {
     # 预检只为「报告」解析路径，用的是与生产者完全相同的 lib 函数与守卫，
     # 因此报告里的路径不可能与真正构建时用的路径不同。
     # 这里**刻意不重复**生产者的「未知字段」断言：配置的形状由各类别自己的生产者负责，
@@ -137,6 +190,11 @@ function Get-PlanItems([string]$RepoRoot, [string]$ConfigDir, [string[]]$Kinds, 
             $entry = [ordered]@{
                 Id = $id; Kind = $kind; ConfigPath = $configPath
                 Destructive = @(); SourceHash = $null; PredictedVersion = $null; BackendConfigFile = $null
+                # 后端配置门禁（仅 pda/pdaweb 有值）。OrderedDictionary 的键必须在建表时出现，
+                # StrictMode 2.0 下点访问不存在的键会抛异常。
+                BackendConfigGuard = $null
+                # 发布后回推配置（仅 PDA APK 有值）。同上，键必须建表时出现。
+                VersionPush = $null
             }
 
             if ($kind -eq 'dotnet') {
@@ -172,6 +230,7 @@ function Get-PlanItems([string]$RepoRoot, [string]$ConfigDir, [string[]]$Kinds, 
                 $entry.Runtime = ''
                 $entry.BackendConfigFile = $backendConfigFile
                 $entry.SourceHash = Get-PdaSourceHash $manifestPath $backendConfigFile
+                $entry.BackendConfigGuard = Resolve-BackendConfigGuard $project "$configPath 的 $id 条目" $TargetNames
                 $entry.Destructive = @("HBuilderX web 发行全量重建 $outputDir：该目录会被清空重写，其中手工放入的文件会丢失")
             } elseif ($kind -eq 'pda') {
                 Assert-RequiredFields $project @('projectRoot', 'manifestPath', 'backendConfigFile', 'outputDir', 'versionMarker') "$configPath 的 $id 条目"
@@ -184,6 +243,7 @@ function Get-PlanItems([string]$RepoRoot, [string]$ConfigDir, [string[]]$Kinds, 
                 $entry.Runtime = ''
                 $entry.BackendConfigFile = $backendConfigFile
                 $entry.SourceHash = Get-PdaSourceHash $manifestPath $backendConfigFile
+                $entry.BackendConfigGuard = Resolve-BackendConfigGuard $project "$configPath 的 $id 条目" $TargetNames
                 $entry.CurrentVersion = $null
                 try { $entry.CurrentVersion = [string](Read-JsonFile $manifestPath).versionName } catch { $entry.CurrentVersion = $null }
                 # 预测值 = PDA manifest 的 versionName 自增一位（build-apk.ps1 的规则）。
@@ -197,6 +257,21 @@ function Get-PlanItems([string]$RepoRoot, [string]$ConfigDir, [string[]]$Kinds, 
                     'PDA 构建清空 release/app-resources 与 release/simpleDemo/src/main/assets/apps/<appid>',
                     "PDA 构建覆盖 release/local.properties、$versionMarker 与 unpackage/resources/<appid>"
                 )
+                # 发布后动作：PDA APK 构建会把 manifest.json 的 versionName/versionCode 自增，
+                # 并同步 release/simpleDemo/build.gradle。这两个文件是 git 跟踪的源码，发布成功后
+                # 必须由操作者用 git 技能提交并推送到上游。这里只解析「要推哪些文件」，用于预检
+                # 展示与 digest；字段合法性由 publish-pda.ps1 在动手前断言（不在这里重复）。
+                $versionPush = Get-OptionalProperty $project 'versionPush' $null
+                if ($null -ne $versionPush) {
+                    $pushRelative = @(Get-OptionalProperty $versionPush 'files' @() | ForEach-Object { [string]$_ })
+                    $pushFiles = @($pushRelative | ForEach-Object { Resolve-FullPath $_ $projectRoot })
+                    $entry.VersionPush = [ordered]@{
+                        Enabled       = [bool](Get-OptionalProperty $versionPush 'enabled' $true)
+                        Files         = @($pushFiles)
+                        RelativeFiles = @($pushRelative)
+                        CommitMessage = [string](Get-OptionalProperty $versionPush 'commitMessage' '')
+                    }
+                }
             } else {
                 throw "未知的发布类别：$kind（必须取自 config 的 kindOrder）"
             }
@@ -351,7 +426,8 @@ try {
     # ---- 计划项 -----------------------------------------------------------
     # 同样包 @()：没有匹配项时 Get-PlanItems 返回空数组，解包成 $null 后下面每一处
     # @($planItems ...) 虽然还能用，但 `$planItems.Count` 一类的写法会炸。
-    $planItems = @(Get-PlanItems $repoRoot $configDir $selectedKinds $onlyItems)
+    # 环境名取自 release.json 的 targets，用于校验 backendConfigGuard.allowedUrls 的键。
+    $planItems = @(Get-PlanItems $repoRoot $configDir $selectedKinds $onlyItems @($outputRoots.Keys | ForEach-Object { [string]$_ }))
     if ($onlyItems.Count -gt 0) {
         $knownIds = @($planItems | ForEach-Object { $_.Id })
         $unknownIds = @($onlyItems | Where-Object { $knownIds -notcontains $_ })
@@ -362,6 +438,77 @@ try {
                 if ($null -ne $pc) { $allIds += @($pc.projects | ForEach-Object { [string]$_.id }) }
             }
             throw ("未知的发布项：{0}。可选：{1}" -f ($unknownIds -join '、'), (($allIds | Sort-Object -Unique) -join '、'))
+        }
+    }
+
+    # ---- 发布后动作（PDA 版本号回推） -------------------------------------
+    # build-apk.ps1 每次构建都会自增 manifest.json 的 versionName/versionCode 并同步
+    # build.gradle，发布成功后这些版本变动必须推到上游；否则下一次发布从旧号续号，
+    # 别人也看不到已经消耗的号。脚本**只报告**，提交与推送由操作者在打包完成后用
+    # git 技能执行（rules R11/R15）。
+    $postPublishPlan = @()
+    foreach ($item in @($planItems | Where-Object { $_.Kind -eq 'pda' })) {
+        # $item 是 OrderedDictionary：键在建表时就存在（非 pda 项为 $null），
+        # StrictMode 2.0 下点访问不存在的键会抛异常。
+        if ($null -eq $item.VersionPush -or -not [bool]$item.VersionPush.Enabled) { continue }
+        $predictedVersion = [string]$item.PredictedVersion
+        $postPublishPlan += [ordered]@{
+            Id            = $item.Id
+            Action        = 'commit-and-push-version'
+            Skill         = 'git'
+            Version       = $predictedVersion
+            Files         = @($item.VersionPush.Files)
+            RelativeFiles = @($item.VersionPush.RelativeFiles)
+            CommitMessage = ([string]$item.VersionPush.CommitMessage).Replace('{version}', $predictedVersion)
+        }
+    }
+
+    # ---- 后端配置门禁（config.js 指向哪个环境） ---------------------------
+    # APK/H5 连哪个后端完全由 config.js 决定，而它是保护文件（只由用户改）。2026-11-10 实测：
+    # production 目标下 config.js 仍指向 http://localhost:11100，预检只把原文展示出来、没有判定，
+    # 打出的正式包连不上生产后端。这里按 config/projects/*.json 的
+    # backendConfigGuard.allowedUrls.<环境> 做硬校验：生效的每个后端 URL 必须精确命中。
+    # 某个环境没在 allowedUrls 里列出 = 该环境不校验（test 常连本机 localhost，不该被误挡）。
+    $backendGuard = [ordered]@{
+        Target      = $Target
+        Checked     = $false
+        AllowedUrls = @()
+        ActiveUrls  = @()
+        Failures    = @()
+    }
+    # pda 与 pdaweb 共用同一个 config.js：同一份文件只判一次，避免两条相同的阻塞原因。
+    $guardCheckedFiles = @()
+    foreach ($guardItem in @($planItems | Where-Object { $_.Kind -in @('pda', 'pdaweb') })) {
+        if ($null -eq $guardItem.BackendConfigGuard -or -not [bool]$guardItem.BackendConfigGuard.Enabled) { continue }
+        $guardConfigFile = [string]$guardItem.BackendConfigFile
+        if ([string]::IsNullOrWhiteSpace($guardConfigFile) -or $guardCheckedFiles -contains $guardConfigFile) { continue }
+        $guardAllowedMap = $guardItem.BackendConfigGuard.AllowedUrls
+        $guardAllowed = @()
+        if ($guardAllowedMap.Contains($Target)) { $guardAllowed = @($guardAllowedMap[$Target]) }
+        if ($guardAllowed.Count -eq 0) { continue }
+        $guardCheckedFiles += $guardConfigFile
+        $backendGuard.Checked = $true
+        $backendGuard.AllowedUrls = @($guardAllowed)
+        if (-not (Test-Path -LiteralPath $guardConfigFile -PathType Leaf)) {
+            $backendGuard.Failures += "后端配置文件不存在，无法校验是否需要连 $Target 环境：$guardConfigFile"
+            continue
+        }
+        $activeUrls = @(Get-ActiveBackendUrls $guardConfigFile)
+        $backendGuard.ActiveUrls = @($activeUrls | ForEach-Object { [string]$_.Value } | Sort-Object -Unique)
+        if ($activeUrls.Count -eq 0) {
+            $backendGuard.Failures += "后端配置文件里没有任何生效的 http(s) 地址：$guardConfigFile（后端地址可能被整段注释掉了）"
+            continue
+        }
+        foreach ($activeUrl in $activeUrls) {
+            $matched = $false
+            foreach ($candidateUrl in $guardAllowed) {
+                # 只归一化首尾空白与结尾斜杠：URL 路径大小写对后端有语义，不能一起转小写。
+                if (([string]$activeUrl.Value).Trim().TrimEnd('/') -eq ([string]$candidateUrl).Trim().TrimEnd('/')) { $matched = $true; break }
+            }
+            if (-not $matched) {
+                $backendGuard.Failures += ("{0} 第 {1} 行生效的 {2} = {3} 不在 {4} 环境允许的后端地址里（{5}）。该文件是保护文件，请由用户先改到 {4} 环境再发布。" -f `
+                    $guardConfigFile, [int]$activeUrl.Line, [string]$activeUrl.Key, [string]$activeUrl.Value, $Target, ($guardAllowed -join '、'))
+            }
         }
     }
 
@@ -460,6 +607,11 @@ try {
         Items              = @($planItems | ForEach-Object { [ordered]@{ Id = $_.Id; Kind = $_.Kind; SourceHash = $_.SourceHash; PredictedVersion = $_.PredictedVersion } })
         PlannedArtifacts   = @($planned)
         DestructiveActions = @($destructive)
+        # 后端配置门禁的结果也进 digest：预检之后改了 allowedUrls 或 config.js 的生效地址，
+        # 执行阶段必须被挡回预检（config.js 的哈希已由 Items.SourceHash 覆盖，这里补的是期望值）。
+        BackendConfigGuard = $backendGuard
+        # 发布后动作也进 digest：预检之后改了 versionPush 配置，执行阶段必须被挡回预检。
+        PostPublish        = @($postPublishPlan)
     }
     $canonical = $plan | ConvertTo-Json -Depth 8 -Compress
     $digestBytes = [Text.Encoding]::UTF8.GetBytes($canonical)
@@ -516,6 +668,13 @@ try {
     if (@($planItems | Where-Object { $_.Kind -eq 'pda' }).Count -gt 0) {
         $warnings += 'PDA 工具链版本配对未经验证（参考文档记录的配对为 Android-SDK@5.24.82669_20260813 ↔ HBuilderX 5.24.2026081301，本机 HBuilderX CLI 自报 5.07）。打包成功不代表运行时兼容，建议装真机冒烟（扫码头、蓝牙、是否白屏）。'
     }
+    if ($postPublishPlan.Count -gt 0) {
+        # 必须出现在预检确认里：用户确认的是「打包后还要把版本号推到上游」，不只看产物。
+        foreach ($pushItem in $postPublishPlan) {
+            $warnings += ("PDA APK 构建会把版本号自增到 {0}；打包成功后必须用 git 技能提交并推送 {1} 到上游（提交标题：{2}）。" -f `
+                $pushItem.Version, ($pushItem.RelativeFiles -join '、'), $pushItem.CommitMessage)
+        }
+    }
     if (@($planItems | Where-Object { $_.Kind -eq 'pdaweb' }).Count -gt 0) {
         # 必须带 -ErrorAction SilentlyContinue：脚本顶层是 $ErrorActionPreference='Stop'，
         # Get-Process 无匹配是非终止错误，会被提升为终止错误，让本该只发一条警告的预检崩成
@@ -545,6 +704,8 @@ try {
 
     # ---- 阻塞原因 ---------------------------------------------------------
     $blocking = @()
+    # 后端地址不匹配是**硬阻塞**：这类包打出来就算构建成功也连不上目标后端，属于产物无效。
+    foreach ($guardFailure in @($backendGuard.Failures)) { $blocking += [string]$guardFailure }
     if (@($planItems).Count -eq 0) { $blocking += '没有选中任何发布项，请检查 -Only / -Kind 与 release.json 的 defaultKinds。' }
     if (-not $branchGate) { $blocking += "分支 '$($git.Branch)' 不在允许列表（$($allowedBranches -join '、')），需 -ConfirmBranch。" }
     if (-not $dirtyAllowed) { $blocking += '工作区存在未提交变更，需 -AllowDirty。' }
@@ -611,7 +772,9 @@ try {
         Plan              = $plan
         Warnings          = @($warnings)
         BackendConfig     = $backendConfig
+        BackendConfigGuard = $backendGuard
         PdaVersions       = $pdaVersions
+        PostPublish       = @($postPublishPlan)
         BlockingReasons   = @($blocking)
     }
 
@@ -689,6 +852,30 @@ try {
     if ($null -eq $package) { throw "打包结果不是合法 JSON：$packageResult" }
 
     $artifacts = @($package.items | ForEach-Object { [string]$_.path })
+    # 产物已落盘，PDA 版本号已在构建阶段自增。用生产者回报的**实际**产出版本重建
+    # PostPublish，供操作者用 git 技能提交并推送；脚本自身不执行任何 git 写操作（rules R15）。
+    $postPublishResult = @()
+    $pdaResultPath = Join-Path $runLogDir 'pda.result.json'
+    if (Test-Path -LiteralPath $pdaResultPath -PathType Leaf) {
+        $pdaResult = Read-JsonFile $pdaResultPath
+        if ($null -ne $pdaResult) {
+            foreach ($pdaItem in @(Get-OptionalProperty $pdaResult 'items' @())) {
+                $pushConfig = Get-OptionalProperty $pdaItem 'versionPush' $null
+                if ($null -eq $pushConfig -or -not [bool](Get-OptionalProperty $pushConfig 'enabled' $false)) { continue }
+                $shippedVersion = [string](Get-OptionalProperty $pdaItem 'versionAfter' '')
+                $postPublishResult += [ordered]@{
+                    Id            = [string](Get-OptionalProperty $pdaItem 'id' '')
+                    Action        = 'commit-and-push-version'
+                    Skill         = 'git'
+                    Version       = $shippedVersion
+                    Files         = @(Get-OptionalProperty $pushConfig 'files' @())
+                    RelativeFiles = @(Get-OptionalProperty $pushConfig 'relativeFiles' @())
+                    CommitMessage = ([string](Get-OptionalProperty $pushConfig 'commitMessage' '')).Replace('{version}', $shippedVersion)
+                }
+            }
+        }
+    }
+    $report.PostPublish = @($postPublishResult)
     Write-Event 'run' 'succeeded' 'publish' ("完成，产物目录 {0}" -f $versionDir)
     $report.Status = 'succeeded'
     $report.Artifacts = $artifacts

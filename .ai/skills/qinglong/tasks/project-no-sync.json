@@ -1,0 +1,1 @@
+{"key":"project-no-sync","name":"项目号增量同步","command":"wms/automationwarehouse/sync_project.js","schedule":"27 */5 * * * ?","enabled":true}

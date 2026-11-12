@@ -1,0 +1,1 @@
+{"key":"form-transform-sync","name":"形态转换增量同步","command":"wms/automationwarehouse/sync_transformation_morphological.js","schedule":"55 */5 * * * ?","enabled":true}

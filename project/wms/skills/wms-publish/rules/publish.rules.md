@@ -109,6 +109,7 @@
 
 - 分支白名单与脏工作区门禁按 `release.json` 的 `safety.allowedBranches`、`safety.allowDirty`、`targets.<环境>.requireCleanWorktree` 执行。越界需显式 `-ConfirmBranch` / `-AllowDirty`。
 - **不得**自动 stash、reset、checkout、revert、commit 或 push。不得为了「让工作区干净」而丢弃任何人的改动。
+- 唯一例外是 R15 的 PDA 版本号回推：那是**操作者**在打包成功后通过 `git` 技能执行的收尾步骤，不属于脚本行为；发布脚本本身仍然不得执行任何 git 写操作。
 - 输出根必须是**展开 token 后的绝对路径**，且**必须落在仓库之外**（默认在桌面）。写在仓库内的输出根会让后续构建把产物当源码。
 - 路径必须做越界校验：会写入的路径（`outputDir`、`versionMarker`、`manifestPath` 等）必须落在对应项目根**之内**。一个写错的配置不得让构建脚本去改写仓库外的东西。
 - 传给 `cmd.exe` 的路径必须通过可引用性校验（不得含 `& | < > ^ % " !`）。该校验必须在**构建之前**完成。
@@ -143,3 +144,25 @@
 - 该警告**只针对 APK**，不得套用到 PDA Web。
 - 打包成功 ≠ 运行时兼容。报告里不得把「构建成功」表述为「已验证可用」。
 - PDA Web 的部署前提（history 路由需部署在根路径并配置回退）必须在报告中保留，不得因为「不是本技能职责」而省略——省略会让人把 404 归因到发布包本身。
+
+## R15. PDA 版本号必须回推上游
+
+- PDA APK 的版本号由 `build-apk.ps1` 在**构建阶段**自增：`manifest.json` 的 `versionName`/`versionCode`，并同步 `release/simpleDemo/build.gradle`。这与本技能的 `-BumpVersion`（Web 版本线）是两条互不相干的版本线；只要选中 `pda`，每次构建都会消耗一个 PDA 版本号。
+- 要回推的文件清单与提交标题模板由 `config/projects/pda.json` 的 `versionPush` 声明（`enabled` / `files` / `commitMessage`，`{version}` 替换为实际产出版本）。脚本里不得出现这些路径的字面量。
+- 发布脚本**只报告不执行**：`publish.ps1` 在预检警告与报告的 `PostPublish` 中给出文件清单、实际产出版本与提交标题；脚本**不得**执行 `git add` / `commit` / `push` / `stash`。
+- 打包成功后，操作者**必须**用 `git` 技能把 `PostPublish.RelativeFiles` 内的版本文件提交并推送到当前分支的上游。只提交这些版本文件，不夹带其他改动。
+- git 技能报阻断（如 `protected-branch`、`dirty-tree`）时**停下报告用户**，不得绕过守卫、不得 `--force`、不得手工拼命令硬推。
+- 发布失败但版本号已被自增时，如实报告脏文件，**不得**自动提交或回退。
+- 本要求**只针对 APK**：`pdaweb`（H5）发行不改 `manifest.json`，不适用本节，也不得为「统一」而给 H5 增加版本回推。
+
+---
+
+## R16. 后端配置必须与目标环境匹配
+
+- `config/projects/*.json` 的 `backendConfigGuard.allowedUrls.<环境>` 声明该环境允许的后端地址。发布时 `publish.ps1` 必须读取 `backendConfigFile`（config.js），对其**生效**（未被 `//` 注释）的每个 `http(s)` 地址做精确匹配，任一不命中即阻塞（预检退出码 `2`，执行阶段直接中止）。
+- 检测必须在**预检阶段**完成，结果进入 `BlockingReasons` 与 `PlanDigest`，并出现在报告的 `BackendConfigGuard` 里。**不得**只打警告，**不得**留到构建之后由人工发现——APK/H5 的后端地址被编译进产物，构建成功不代表产物可用。
+- 某个环境未在 `allowedUrls` 中列出即**不校验**，这是有意设计：`test` 常连本机 `localhost`，不得为「统一」给它加期望值而挡住本机调试。
+- 期望值只能由配置改动。发布脚本**不得**修改 config.js（保护文件，只由用户改），**不得**为让门禁通过而放宽匹配、跳过检测或增加绕过开关。
+- 匹配只认生效行：注释掉的历史环境不得参与匹配；URL 自身含 `//`，不得用「截断行内 `//`」的办法剔注释。
+- 该门禁与工作区干净度、分支白名单无关，`-AllowDirty` / `-ConfirmBranch` 不能放行它；不匹配时唯一出路是改 config.js 或改配置里的期望值。
+- config.js 的环境切换是**临时**的：发布前切到目标环境，打包完成后必须还原到仓库提交状态，且**不得**把它纳入版本号回推的提交范围（R15）。门禁在还原后重新阻塞 `production` 属预期行为。

@@ -10,7 +10,7 @@ description: "dbsql 的 MySQL-only、安全和单据点查询底线。"
 - 连接配置只从 `~/.claude/skills/dbsql/.env` 读取，除非用户明确给出临时覆盖参数。
 - 默认环境是 `.env` 中的 `DBSQL_DEFAULT_ENV`，当前默认 `dev`；支持 `dev`、`prod.lebg`、`prod.lebgty`、`prod.lebgjs`、`prod.lebgch`、`prod.labg`、`prod.bpbg`、`replica`、`bi`、`logs`、`warehouse` 受控目标。
 - 目标通过 `<TARGET>_DB_HOST/PORT/USER/PASS/NAME` 配置；未配置的正式据点、从库、BI、日志库或立库库必须失败闭合，不得回退主库或任意 `Database`。
-- 账号必须由用户指定并经数据库管理员确认具备只读权限；脚本关键字拦截只是第二道防线，不等于数据库授权。
+- 账号必须来自 `.env` 的显式配置。只读查询允许使用现有账号（开发库常见 `root`）；脚本的关键字拦截、单语句限制只是第二道防线，不等于数据库授权。写 SQL 永远不执行。
 - 正式目标必须显式指定；不能把 `prod` 或项目 appsettings 中的默认值当作所有据点配置。
 
 ## Connection Safety

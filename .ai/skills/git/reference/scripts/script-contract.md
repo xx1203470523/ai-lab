@@ -193,6 +193,23 @@
 | `not-gitlab` | 远端不是 GitLab。推送不受影响，且**不会编造** MR 链接（`createUrl` 为 null） |
 | `mr-lookup-degraded` | `glab` 不可用或调用失败。同样不编造链接，`status` 为 `blocked` |
 
+**GitLab 判定规则**（两段证据，任意一条成立即算 GitLab）：
+
+1. 域名启发式：主机名是 `gitlab` / `gitlab.com` / `gitlab.*` / `*.gitlab.*`。判定依据写进 `data.gitlabDetectedBy = 'domain'`。
+2. `glab` 的本地登录配置：`glab auth status` 的输出里出现该主机的 `host:port`（远端没写端口时只比主机名）。判定依据写进 `data.gitlabDetectedBy = 'glab-auth'`。
+
+第 2 条是为自建实例补的：这类实例常用 `IP:端口` 接入（实测
+`http://10.10.80.231:8052/hjh1126123/wms`），域名启发式一个都认不出来，会把本来
+能做的 MR 查询白降级成 `not-gitlab`。它只读本地配置、不发网络请求；`glab` 里没有
+这台主机时 MR 本来也查不了，仍按 `not-gitlab` 降级。
+
+匹配是**带边界**的，且只对含点的主机名生效：端口不同（`host:8443` vs `host:9999`）、
+主机名只是别人域名的子串（`example.test` vs `git.example.test`）、以及本地路径远端被
+解析出的单段盘符（`C`）都不算命中。这三条都有回归用例。
+
+`data` 因此带出 `host`、`port`、`gitlabDetectedBy`（域名为 `domain`，
+经 glab 配置认出为 `glab-auth`，未认定为 GitLab 时为空）。
+
 ### cleanup.ps1
 
 ```text

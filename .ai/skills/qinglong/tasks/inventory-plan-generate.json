@@ -1,0 +1,1 @@
+{"key":"inventory-plan-generate","name":"盘点计划：自动生成循环盘点任务","command":"wms/inventory_count/inventory_count_schedule_task.js","schedule":"47 */30 * * * ?","enabled":true}

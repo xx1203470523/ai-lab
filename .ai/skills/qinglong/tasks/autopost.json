@@ -1,0 +1,1 @@
+{"key":"autopost","name":"自动过账","command":"AutoPost/autopost.js","schedule":"5 */5 0-3,7-23 * * ?","enabled":true}

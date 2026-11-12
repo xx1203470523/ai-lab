@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    db-ops 阶段 1 离线测试（T1–T30）。**不连接任何数据库，不触碰真实凭据文件。**
+    db-ops 离线测试（T1–T30）。**不连接任何数据库，不触碰真实凭据文件。**
 
 .DESCRIPTION
     三个不容妥协的测试纪律：
@@ -308,7 +308,7 @@ function Get-EvidenceLine {
 # 用例
 # ---------------------------------------------------------------------------
 
-Write-Host '=== db-ops 阶段 1 离线测试 ==='
+Write-Host '=== db-ops 离线测试 ==='
 Write-Host ('技能根 ：{0}' -f $SkillRoot)
 Write-Host ('工作根 ：{0}' -f $WorkRoot)
 Write-Host ('子进程 ：{0}' -f $script:PowerShellExe)
@@ -358,13 +358,13 @@ Add-Result -Id 'T02c' -Title 'prod.lebgty 先命中 needs-review（优先级表�
     -Ok ($r.ExitCode -eq 5 -and $r.StdOut.Contains('有效状态  ：needs-review')) `
     -Detail (Get-EvidenceLine -Text $r.StdOut -Pattern '有效状态')
 
-# --- T03 高权限账号被拦 ---------------------------------------------------
+# --- T03 高权限账号只告警、不拦只读 ---------------------------------------
 $rootEntries = Get-DevCredentialEntries -UserName 'root'
 $rootWork = New-TestWork -Name 'root-user' -CredentialsBody (New-CredentialsBody -Entries $rootEntries)
 $r = Invoke-DbOps -Work $rootWork -Arguments @('-Mode', 'Validate', '-Target', 'dev.lebgjm')
-Add-Result -Id 'T03' -Title 'USER=root → blocked，且黑名单来自 policy' -Expect 5 -Actual $r.ExitCode `
-    -Ok ($r.ExitCode -eq 5 -and $r.StdOut.Contains('有效状态  ：blocked') -and $r.StdOut.Contains('highPrivilegeUserPattern')) `
-    -Detail (Get-EvidenceLine -Text $r.StdOut -Pattern '有效状态|highPrivilegeUserPattern')
+Add-Result -Id 'T03' -Title 'USER=root → ready（只读可用）并给出高权限告警' -Expect 0 -Actual $r.ExitCode `
+    -Ok ($r.ExitCode -eq 0 -and $r.StdOut.Contains('有效状态  ：ready') -and $r.StdOut.Contains('高权限')) `
+    -Detail (Get-EvidenceLine -Text $r.StdOut -Pattern '有效状态|高权限')
 
 # --- T06 setup 已存在且无 -Force ------------------------------------------
 $beforeBytes = [IO.File]::ReadAllBytes($readyWork.CredentialsPath)
@@ -585,13 +585,34 @@ Add-Result -Id 'T17' -Title '-ListTargets 每行带状态与依据' -Expect '0 �
     -Ok ($r.ExitCode -eq 0 -and $reasonLines.Count -eq 19 -and $lebgWarned) `
     -Detail ('prod.lebg 告警={0}' -f $lebgWarned)
 
-# --- T18 阶段 2 未实现 ---------------------------------------------------
-foreach ($mode in @('Query', 'File', 'Check', 'Exec')) {
-    $r = Invoke-DbOps -Work $noCredWork -Arguments @('-Mode', $mode, '-Target', 'dev.lebgjm')
-    Add-Result -Id ('T18-' + $mode) -Title ('-Mode {0} 明确报未实现' -f $mode) -Expect 1 -Actual $r.ExitCode `
-        -Ok ($r.ExitCode -eq 1 -and $r.Combined.Contains('阶段 2')) `
-        -Detail (Get-EvidenceLine -Text $r.Combined -Pattern '阶段 2')
+# --- T18 执行模式的闸门（全部离线：未配置时在连接前失败） -----------------
+foreach ($mode in @('Query', 'File', 'Check')) {
+    $arguments = @('-Mode', $mode, '-Target', 'dev.lebgjm')
+    if ($mode -eq 'Query') { $arguments += @('-Sql', 'SELECT 1') }
+    if ($mode -eq 'File') { $arguments += @('-SqlPath', (New-SqlFile -Work $noCredWork -Name 't18.sql' -Sql 'SELECT 1')) }
+    $r = Invoke-DbOps -Work $noCredWork -Arguments $arguments
+    Add-Result -Id ('T18-' + $mode) -Title ('-Mode {0} 未配置 → 5（连接前失败）' -f $mode) -Expect 5 -Actual $r.ExitCode `
+        -Ok ($r.ExitCode -eq 5 -and $r.Combined.Contains('凭据文件不存在')) `
+        -Detail (Get-EvidenceLine -Text $r.Combined -Pattern '凭据文件不存在')
 }
+
+# 只读 SQL 不能用 Exec 绕过确认链，也不能被当成写操作执行。
+$r = Invoke-DbOps -Work $readyWork -Arguments @('-Mode', 'Exec', '-Target', 'dev.lebgjm', '-Sql', 'SELECT 1')
+Add-Result -Id 'T18-ExecReadOnly' -Title 'Exec 拒绝只读 SQL（应走 Query）' -Expect 1 -Actual $r.ExitCode `
+    -Ok ($r.ExitCode -eq 1 -and $r.Combined.Contains('只读语句')) `
+    -Detail (Get-EvidenceLine -Text $r.Combined -Pattern '只读语句')
+
+# 写 SQL：没有摘要 → 3；摘要不对 → 4。两者都在建立连接之前返回。
+$execSql = 'UPDATE t SET a = a WHERE 1 = 0'
+$r = Invoke-DbOps -Work $readyWork -Arguments @('-Mode', 'Exec', '-Target', 'dev.lebgjm', '-Sql', $execSql)
+Add-Result -Id 'T18-ExecNoConfirm' -Title 'Exec 写 SQL 无确认摘要 → 3（只打印计划）' -Expect 3 -Actual $r.ExitCode `
+    -Ok ($r.ExitCode -eq 3 -and $r.StdOut.Contains('摘要：') -and $r.StdOut.Contains($execSql)) `
+    -Detail (Get-EvidenceLine -Text $r.StdOut -Pattern '摘要：')
+
+$r = Invoke-DbOps -Work $readyWork -Arguments @('-Mode', 'Exec', '-Target', 'dev.lebgjm', '-Sql', $execSql, '-Confirm', 'deadbeefdeadbeef')
+Add-Result -Id 'T18-ExecWrongConfirm' -Title 'Exec 写 SQL 摘要不匹配 → 4' -Expect 4 -Actual $r.ExitCode `
+    -Ok ($r.ExitCode -eq 4 -and $r.Combined.Contains('摘要不匹配')) `
+    -Detail (Get-EvidenceLine -Text $r.Combined -Pattern '摘要不匹配')
 
 # --- T19 setup 在非交互环境 ----------------------------------------------
 $freshWork = New-TestWork -Name 'setup-noninteractive'
@@ -770,7 +791,7 @@ $failed = @($script:Results | Where-Object { -not $_.Ok }).Count
 
 # 期望条数写死在这里。任何一条用例因为未捕获异常被跳过时，「PASS 45 / FAIL 0」
 # 看上去仍然像一次全绿——只有和期望条数比对才能看出跑少了一条。
-$expectedCases = 47
+$expectedCases = 49
 $aborted = ($script:Results.Count -ne $expectedCases)
 
 Write-Host ''

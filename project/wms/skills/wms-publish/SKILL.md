@@ -26,8 +26,8 @@ version: 1.0.0
 config/release.json          版本、目标环境、归档命名、打包、日志、安全门禁
 config/projects/dotnet.json  .NET 后端：项目根、configuration/framework/runtime、项目清单
 config/projects/web.json     前端：项目根、buildCommand、mode
-config/projects/pdaweb.json  PDA Web（H5）：HBuilderX CLI、manifest、config.js
-config/projects/pda.json     PDA APK：委托 release/scripts/build-apk.ps1
+config/projects/pdaweb.json  PDA Web（H5）：HBuilderX CLI、manifest、config.js；backendConfigGuard 声明目标环境允许的后端地址
+config/projects/pda.json     PDA APK：委托 release/scripts/build-apk.ps1；backendConfigGuard 同上；versionPush 声明发布后要回推的版本文件
 scripts/publish.ps1          编排层：算版本与选择、算 digest、按序派生生产者、调 package.ps1
 scripts/invoke-publish.ps1   同一进程内串起预检+执行，并用不继承句柄的方式捕获输出
 scripts/publish-<kind>.ps1   四个生产者：只负责把源码变成 outputDir 里的东西
@@ -113,6 +113,34 @@ powershell -NoProfile -File "$sk\invoke-publish.ps1" -Mode Publish -Target test 
 - **重发只影响被发的项目**：每个项目只覆盖**它自己**的目标名，同版本目录里别的项目的包与 APK 不受影响。（聚合模型时期相反：那时重发任一成员都会整体重建该族的包。）
 - **PDA APK 不参与这套命名、聚合与重复发布规则**：它的文件名由 `build-apk.ps1` 自带时间戳决定（同版本号会重复出现，去掉时间戳会让内容不同的两个包互相覆盖），`package.ps1` 只把它原样复制进版本目录，不并入任何 zip。
 
+## PDA 版本号回推（仅 APK，发布后动作）
+
+- **每次 APK 构建都会让版本号 +1**：`build-apk.ps1` 的 `[1/6]` 把 `IMTC.WMS.PDA/manifest.json` 的 `versionName`/`versionCode` 自增，`[4/6]` 再同步 `release/simpleDemo/build.gradle`。这两个文件都是 git 跟踪的源码，所以每完成一次 APK 发布，工作区必然变脏。这与本技能的 `-BumpVersion`（Web 版本线）是两条互不相干的版本线。
+- 发布脚本**不执行任何 git 写操作**。`publish.ps1` 只在报告与预检警告里给出 `PostPublish`：要推哪些文件、本次实际产出版本、提交标题模板。文件清单与标题模板来自 `config/projects/pda.json` 的 `versionPush`（`enabled` / `files` / `commitMessage`，`{version}` 会替换成实际产出版本）。
+- **打包成功后必须用 `git` 技能（`/git`）把版本变动推到上游**：以 `PostPublish.RelativeFiles` 作为唯一提交范围，按 `CommitMessage` 写提交标题，并按 git 技能规范补正文；不要夹带任何其他改动。
+- 先把 `PostPublish` 展示给用户（预检阶段就该看到「打包后还要推一次」），执行完再按清单完成提交与推送，并报告 commit hash 与推送结果。
+- git 技能报阻断（如 `protected-branch`、`dirty-tree`）时**停下报告用户**，不要绕过、不要 `--force`、不要手工拼命令硬推。产物已经落盘，推送失败不影响本次发布包，但必须如实说明「版本号尚未推送到上游」。
+- 发布失败但版本号已被自增（APK 构建失败也照样消耗版本号）：把脏文件如实报告给用户，**不要自行提交或回退**，保留还是还原由用户决定。
+- **PDA Web（H5）不适用**：HBuilderX 的 web 发行不改 `manifest.json`，没有版本变动可推。也不要把 `pdaweb` 与 `pda` 混为一谈。
+- 回推之后工作区恢复干净，下一次 `production` 发布（`requireCleanWorktree: true`）才不会被上一轮留下的版本文件挡住。
+
+## 后端配置检测（APK 与 H5，打包前硬门禁）
+
+- APK 与 H5 连哪个后端完全由 `IMTC.WMS.PDA/config.js` 决定，而它是**保护文件（只由用户改）**：发布脚本从不修改它，预检只展示原文。历史事故：2026-11-10 的正式包 v1.4.2.6 是在 config.js 仍指向 `http://localhost:11100` 时打出来的，构建全部成功，但装到 PDA 上连不上生产后端——产物无效，且预检当时已经把原文打出来了，只是没有判定。
+- 因此项目可在 `config/projects/*.json` 声明：
+
+  ```json
+  "backendConfigGuard": {
+    "enabled": true,
+    "allowedUrls": { "production": ["https://wms.hymson.com:39000/bpbg"] }
+  }
+  ```
+
+- 语义：**在 `allowedUrls` 里列出的环境**发布时，config.js 里**生效**（未被 `//` 注释掉）的每个 `http(s)` 地址都必须精确命中该列表；没列出的环境不校验——`test` 常连本机 `localhost`，不该被误挡。文件不存在，或一个生效地址都没有，同样判阻塞。
+- 这是**阻塞项**（预检退出码 2），原因出现在 `BlockingReasons`，明细在报告的 `BackendConfigGuard`（`Checked` / `AllowedUrls` / `ActiveUrls` / `Failures`），并进入 `PlanDigest`：预检之后改了 config.js 或 `allowedUrls`，执行阶段会被 digest 挡回。
+- 处理方式只有两种：由用户把 config.js 改到目标环境后重新预检；或调整该环境的 `allowedUrls`。**不得**为了让门禁通过去改脚本、放宽匹配或加绕过开关。
+- **环境切换是临时的**：发布前由用户把 config.js 切到目标环境，打包完成后必须还原成仓库里的提交状态（`git checkout -- IMTC.WMS.PDA/config.js`）。config.js 是保护文件，**不属于发布产物**，不随版本号回推一起提交；还原之后再次预检 `production` 会重新阻塞，这是门禁在正常工作，不是故障。
+
 ## 流程
 
 1. 先与用户确认本次要发哪些项，据此决定 `-Only` / `-Kind`。
@@ -121,12 +149,13 @@ powershell -NoProfile -File "$sk\invoke-publish.ps1" -Mode Publish -Target test 
 4. 编排层按 `kindOrder` **串行**派生生产者：`dotnet` → `web` → `pdaweb` → `pda`。**顺序不是小事**：pdaweb 必须排在任何 APK 构建之前，因为 H5 包会把 `manifest.json` 的 `versionName` 编进 `__uniConfig.appVersion`，而 APK 构建第一步就自增 manifest。改 `kindOrder` 前先把这件事想清楚。
 5. 全部生产者成功后，`package.ps1` 逐个项目归档：直接以该项目的 `outputDir` 为源目录压到暂存（包内因此不带目录层），通过完整性测试与清单比对，再搬进版本目录。
 6. 全过程写入 `<输出根>/_logs/<runId>/` 下的 `publish.jsonl`、`publish.status.json`、各阶段的 `*.result.json`，以及本次 run 的 `manifest.json`。**`manifest.json` 每个 run 一份**，其 `artifacts` 只描述最终交付物（各项目的发布包 + APK），不列生产者中间产物。
+7. **若本次包含 `pda`（APK）且发布成功**：按报告里的 `PostPublish` 调用 `git` 技能，把自增后的版本文件提交并推送到上游（详见「PDA 版本号回推」）。这是发布流程的收尾步骤，不能省略；`pdaweb`（H5）没有这一步。
 
 ## 安全边界
 
 - 预检**只读**：不执行构建/发布/压缩/删除/版本递增，不派生任何构建工具，不在输出根留下任何文件（含日志）。读取 `manifest.json`、`config.js`、`version.txt` 属只读展示，允许。**工具链版本不做探测**——探测需要执行 `cli.exe`，违反本行；`hbuilderxCli` 在预检中只做 `Test-Path`。
 - 真实执行必须同时提供 `-Mode Publish` 与 `-ConfirmPublish`，并校验 `PlanDigest` 未变化。
-- 分支白名单（`main` / `production` / `stag`）与脏工作区门禁按 `release.json` 的 `safety.allowDirty`/`targets.<环境>.requireCleanWorktree` 执行；越界需 `-ConfirmBranch` / `-AllowDirty`。**不自动 stash、reset、切分支、commit 或 push。**
+- 分支白名单（`main` / `production` / `stag`）与脏工作区门禁按 `release.json` 的 `safety.allowDirty`/`targets.<环境>.requireCleanWorktree` 执行；越界需 `-ConfirmBranch` / `-AllowDirty`。**发布脚本不自动 stash、reset、切分支、commit 或 push**；唯一例外是 PDA APK 发布后的版本号回推——那是操作者在打包成功后用 `git` 技能完成的收尾步骤（见「PDA 版本号回推」）。
 - 输出根必须落在仓库之外（默认在桌面），且必须是展开 token 后的绝对路径。
 - 归档一律走 Bandizip CLI，不存在时停止，**禁止静默退回 `Compress-Archive` / 7z / Python zipfile**。该门禁只在本次确实要产出归档时生效（纯 PDA APK 发布不需要 Bandizip）。
 - 原生命令写到 stderr 的内容只记日志，成败一律以**退出码**判定；退出码缺失时判为失败。禁止让 stderr 输出中止发布。
@@ -139,6 +168,7 @@ powershell -NoProfile -File "$sk\invoke-publish.ps1" -Mode Publish -Target test 
 - **`.ps1` 必须存成 UTF-8 带 BOM**：Windows PowerShell 5.1 把无 BOM 的 `.ps1` 当 ANSI 读，中文注释会变成乱码并连带把字符串终止符吃掉，报出一堆看似语法错误的东西。新建脚本后务必确认有 BOM。
 - 报告对象里**不要**直接放 `Get-Content` 的返回值：它带 `PSPath`/`PSDrive`/`PSProvider` 装饰属性，末尾的 `ConvertTo-Json` 会连带遍历整个 provider 对象图，输出按深度指数膨胀（实测 depth=6 已 23MB，depth=12 吃满数 GB 并卡死）。读文件内容一律用 `[IO.File]::ReadAllLines` / `ReadAllText`。
 - **管道读输出会挂死**（见上文入口一节的禁止项）。修复点在**派生方式**：`UseShellExecute=$true` 走 ShellExecuteEx（`bInheritHandles=FALSE`），整棵子进程树从根上就拿不到调用方句柄。清自己标准句柄的 `HANDLE_FLAG_INHERIT` **无效**（实测标志已由 1 变 0，管道用例照样挂死）。
+- **.NET 正则的 `\2` 不指向你想的那个组**：命名组排在**无名组之后**编号。`(?<key>…)(['"])(?<value>…)\2` 里的 `\2` 指到的是 `value` 而不是引号，整条正则永远匹配不上（2026-11-10 实测：config.js 明明有生效地址，后端配置检测却报「没有任何生效的 http(s) 地址」）。引号回引一律写成命名组 `\k<quote>`。
 - **PowerShell 变量名大小写不敏感**：脚本参数 `[string]$ResultFile` 与局部循环变量 `$resultFile` 是**同一个变量**。旧实现里 `foreach ($resultFile in @($ItemResults))` 循环结束后把参数值改成了最后一个生产者结果文件的路径，于是 `package.ps1` 把自己的 payload 写进了别人的结果文件、`package.result.json` 从未生成——发布实际成功却报成假失败，还静默污染了一个真实结果文件（2026-09-23 实测）。给局部变量取名前先看它是否与任何参数同形（现名 `$resultFilePath`）。**同类第二次**（同日）：`package.ps1` 规划块的 `$target = Join-Path $versionDir $resolved.Name` 覆盖了环境参数 `[string]$Target`，发布全程零报错，只有 `manifest.json` 与 payload 的 `target` 字段被写成**最后一个发布包的路径**而不是 `test`/`production`（现名 `$targetPath`，与 `publish.ps1` 一致）。这类缺陷不抛错、只在末端产物里显现，排查时先看产物字段再看逻辑。自查手段：把「脚本级 param 名 + 各函数 param 名」与「脚本体内所有 `$同名 = ...`、`foreach ($同名 in ...)`」对撞（函数体内的同名局部变量只影响该函数自身作用域，不影响脚本级参数——两者要分开判）。
 - PDA 产物按 `CreationTime` 定位，**不按 `LastWriteTime`**：新 APK 与上一轮 sha256 完全相同、`LastWriteTime` 停在上一轮构建时刻，都是正常结果。
 - **PDA APK 工具链版本配对未经验证**：参考文档记录的配对是 `Android-SDK@5.24.82669_20260813` ↔ HBuilderX `5.24.2026081301`，本机 HBuilderX CLI 自报 `5.07`。预检每次打这条警告，**只提示不阻塞**；打包成功 ≠ 运行时兼容，建议装真机冒烟（扫码头、蓝牙、是否白屏）。该警告**只针对 APK**，不要套到 PDA Web 上。

@@ -1,0 +1,1 @@
+{"key":"supplier-sync","name":"供应商增量同步","command":"wms/automationwarehouse/sync_supplier.js","schedule":"20 */5 * * * ?","enabled":true}

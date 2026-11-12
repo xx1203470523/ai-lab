@@ -175,11 +175,11 @@ function Assert-DbOpsPolicySchema {
 
     $exec = Get-OptionalProperty -Object $Policy -Name 'exec' -Default $null
     if ($null -eq $exec) { throw '配置缺少字段：policy.json.exec' }
-    Assert-NoUnknownFields -Object $exec -Allowed @('allowWrite', 'requireDigest', 'requireTransaction', 'requireBackup', 'reserved') -Context 'policy.json.exec'
-    Assert-RequiredFields -Object $exec -Names @('allowWrite', 'requireDigest', 'requireTransaction', 'requireBackup', 'reserved') -Context 'policy.json.exec'
-    foreach ($name in @('allowWrite', 'requireDigest', 'requireTransaction', 'requireBackup', 'reserved')) {
-        Assert-BooleanField -Object $exec -Name $name -Context 'policy.json.exec'
-    }
+    # exec 段只留 allowWrite。摘要、单语句、事务是 Exec 的固定前置条件，
+    # 不做成开关：能被关掉的「安全要求」等于没有要求。
+    Assert-NoUnknownFields -Object $exec -Allowed @('allowWrite') -Context 'policy.json.exec'
+    Assert-RequiredFields -Object $exec -Names @('allowWrite') -Context 'policy.json.exec'
+    Assert-BooleanField -Object $exec -Name 'allowWrite' -Context 'policy.json.exec'
 }
 
 # ---------------------------------------------------------------------------
@@ -445,13 +445,12 @@ function Get-DbOpsRouteStatus {
         }
     }
 
-    if ([bool](Get-OptionalProperty -Object $RouteCredential -Name 'HighPrivilege' -Default $false)) {
-        return [pscustomobject]@{
-            EffectiveStatus = 'blocked'
-            Reason = ('账号命中 policy.credentials.highPrivilegeUserPattern，拒绝使用。' +
-                '本技能不提供绕过开关：请向 DBA 申请具备只读权限的独立账号。')
-        }
-    }
+    # 高权限账号**不再阻断只读查询**。原因很实际：开发库常用的就是 root/admin，
+    # 把「账号是不是专用只读号」当成可用性前提，会让整条查询链路在第一步就死掉，
+    # 而真正兜住只读的是 sql-safety 的静态守卫 + 一次一条语句的执行约束。
+    # 它保留为一条告警（见 New-RouteStateList），写操作则统一走 Exec 的确认摘要。
+    #
+    # 主机/端口声明不一致仍然是硬阻断：那会让「以为查 A 库、实际连 B 库」静默发生。
 
     if ([bool](Get-OptionalProperty -Object $RouteCredential -Name 'HostMismatch' -Default $false)) {
         return [pscustomobject]@{

@@ -517,6 +517,95 @@ $r = Invoke-Skill -Script 'mr.ps1' -Arguments @(
 Assert-Equal -Label '不存在的目标分支被拦截' -Expected 'target-branch-unresolved' -Actual $r.json.errorCode
 
 # ===========================================================================
+Write-Head 'mr.ps1 自建 GitLab 识别'
+
+# 域名启发式只认 gitlab / gitlab.* / *.gitlab.*。自建实例常用 IP:端口 接入
+# （实测 http://10.10.80.231:8052/hjh1126123/wms），旧实现把它判成 not-gitlab，
+# 把本来能做的 MR 查询白降级。补充判据：glab 的本地登录配置里出现该 host:port 即算 GitLab。
+# 这里用假 glab 造场景，不碰真实实例、不发任何网络请求。
+$fakeBin = Join-Path $labPath 'fake-glab-bin'
+if (Test-Path -LiteralPath $fakeBin) { Remove-Item -Recurse -Force -LiteralPath $fakeBin }
+New-Item -ItemType Directory -Force -Path $fakeBin | Out-Null
+
+# 桩必须是真正的 .exe：脚本用 CreateProcess（UseShellExecute=$false）起 glab，
+# 那条路径只按 PATHEXT 之外的精确文件名解析，.cmd/.bat 桩不会被选中。
+$fakeGlabSource = @'
+public static class FakeGlab {
+    public static int Main(string[] args) {
+        if (args.Length == 0) { return 0; }
+        if (args[0] == "auth") {
+            System.Console.WriteLine("Logged in to git.example.test:8443 as tester");
+            System.Console.WriteLine("REST API Endpoint: http://git.example.test:8443/api/v4/");
+            return 0;
+        }
+        if (args[0] == "mr") {
+            System.Console.WriteLine("[]");
+            return 0;
+        }
+        if (args[0] == "repo") {
+            System.Console.WriteLine("{\"web_url\":\"http://git.example.test:8443/group/repo\"}");
+            return 0;
+        }
+        return 0;
+    }
+}
+'@
+Add-Type -TypeDefinition $fakeGlabSource -OutputAssembly (Join-Path $fakeBin 'glab.exe') -OutputType ConsoleApplication
+
+$selfHostedRepo = Join-Path $labPath 'self-hosted'
+if (Test-Path -LiteralPath $selfHostedRepo) { Remove-Item -Recurse -Force -LiteralPath $selfHostedRepo }
+& git init -q -b main $selfHostedRepo | Out-Null
+& git -C $selfHostedRepo config user.email 'test@example.com' | Out-Null
+& git -C $selfHostedRepo config user.name 'test' | Out-Null
+& git -C $selfHostedRepo config core.autocrlf false | Out-Null
+Set-Content -LiteralPath (Join-Path $selfHostedRepo 'readme.md') -Value 'hello' -Encoding UTF8
+& git -C $selfHostedRepo add readme.md | Out-Null
+& git -C $selfHostedRepo commit -q -m 'chore: 初始化' | Out-Null
+& git -C $selfHostedRepo branch 'fix/lyp/self-hosted' | Out-Null
+# 显式 -Target 要求 refs/remotes/origin/main 存在；远端是假地址，直接造出这个远端跟踪引用，
+# 免得脚本去 ls-remote 一个不存在的域名。
+& git -C $selfHostedRepo update-ref 'refs/remotes/origin/main' HEAD | Out-Null
+& git -C $selfHostedRepo remote add origin 'http://git.example.test:8443/group/repo' | Out-Null
+
+$pathBeforeFake = $env:PATH
+$env:PATH = "$fakeBin;$pathBeforeFake"
+try {
+    # glab 配置里有这台主机 → 认作 GitLab，查询正常进行
+    $r = Invoke-Skill -Script 'mr.ps1' -Arguments @(
+        '-Action', 'link', '-Source', 'fix/lyp/self-hosted', '-Target', 'main'
+    ) -WorkingDirectory $selfHostedRepo
+    Assert-Equal -Label 'glab 已配置的自建实例不再误判为 not-gitlab' -Expected 'ok' -Actual $r.json.status
+    Assert-Equal -Label '自建实例带出端口的主机名' -Expected 'git.example.test' -Actual $r.json.data.host
+    Assert-Equal -Label '识别出端口' -Expected 8443 -Actual $r.json.data.port
+    Assert-Equal -Label '标注识别依据为 glab 登录配置' -Expected 'glab-auth' -Actual $r.json.data.gitlabDetectedBy
+    Assert-True -Label '按真实 webUrl 拼出创建链接' `
+        -Condition ($r.json.data.createUrl -like 'http://git.example.test:8443/group/repo/-/merge_requests/new?*')
+
+    # 同一主机但端口不同 → 不是同一台服务，仍然降级
+    & git -C $selfHostedRepo remote set-url origin 'http://git.example.test:9999/group/repo' | Out-Null
+    $r = Invoke-Skill -Script 'mr.ps1' -Arguments @(
+        '-Action', 'query', '-Source', 'fix/lyp/self-hosted', '-Target', 'main'
+    ) -WorkingDirectory $selfHostedRepo
+    Assert-Equal -Label '端口不同不认作同一 GitLab' -Expected 'not-gitlab' -Actual $r.json.errorCode
+
+    # 主机名是另一个域名的子串（git.example.test vs example.test）→ 不得误命中
+    & git -C $selfHostedRepo remote set-url origin 'http://example.test:8443/group/repo' | Out-Null
+    $r = Invoke-Skill -Script 'mr.ps1' -Arguments @(
+        '-Action', 'query', '-Source', 'fix/lyp/self-hosted', '-Target', 'main'
+    ) -WorkingDirectory $selfHostedRepo
+    Assert-Equal -Label '子串不算命中' -Expected 'not-gitlab' -Actual $r.json.errorCode
+
+    # 单段主机名（本地路径远端被解析成的盘符）不得借 glab 输出误命中
+    & git -C $selfHostedRepo remote set-url origin 'C:\lab\repo' | Out-Null
+    $r = Invoke-Skill -Script 'mr.ps1' -Arguments @(
+        '-Action', 'query', '-Source', 'fix/lyp/self-hosted', '-Target', 'main'
+    ) -WorkingDirectory $selfHostedRepo
+    Assert-Equal -Label '单段主机名不参与 glab 匹配' -Expected 'not-gitlab' -Actual $r.json.errorCode
+} finally {
+    $env:PATH = $pathBeforeFake
+}
+
+# ===========================================================================
 Write-Head 'cleanup.ps1 两阶段清理'
 
 # 造一个「已合并」的工作区：分支与 origin/main 同点

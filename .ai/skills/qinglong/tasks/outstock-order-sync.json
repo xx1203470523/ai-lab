@@ -1,0 +1,1 @@
+{"key":"outstock-order-sync","name":"出库单增量同步","command":"wms/automationwarehouse/sync_stock_out.js","schedule":"13 */5 * * * ?","enabled":true}

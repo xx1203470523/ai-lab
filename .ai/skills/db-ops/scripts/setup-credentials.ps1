@@ -7,10 +7,11 @@
     收紧权限，然后原子落到 policy.credentialsPath。
 
     它不做的三件事，都是刻意的：
-      - 不从旧 dbsql/.env 迁移、不读取旧凭据、不提供搬运脚本。
-        迁移 = 把生产凭据重新归属到另一条路由，必须由人明确决定。
-      - 不验证连通性。写好文件不等于账号能用；真实连接属于阶段 2。
-      - 不提供高权限账号的绕过开关。命中 highPrivilegeUserPattern 一律拒绝写入。
+      - 不自动迁移旧 dbsql/.env。迁移必须是用户的明确决定；本脚本只接受交互输入，
+        或在用户要求下由一次性导入完成（导入不修改 dbsql/.env）。
+      - 不验证连通性。写好文件不等于账号能用；连通性用 db-ops.ps1 -Mode Check 验证。
+      - 不因高权限账号拒绝写入。命中 highPrivilegeUserPattern 只告警：只读查询可用，
+        写操作仍需 -Mode Exec 的确认摘要。
 
     退出码
       0 成功；或文件已存在且未指定 -Force（此时原样保留，不做任何修改）
@@ -94,7 +95,7 @@ function Get-CredentialsFileHeader {
         '# 本文件只声明「怎么连」。库名不在这里——库名是 config/routes.json 的事实，',
         '# 不允许被凭据文件覆盖（那正是「看起来查 A 库、实际连 B 库」的成因）。',
         '#',
-        '# 阶段 1 不验证连通性：文件写好不等于账号能连上库、更不等于账号只有只读权限。'
+        '# 写文件不验证连通性：文件写好不等于账号能连上库、更不等于账号只有只读权限。'
     ) -join "`r`n"
 }
 
@@ -316,7 +317,7 @@ function Invoke-SetupCredentials {
             $lines.Add(('  被跳过的前缀：{0}（对应路由保持 unconfigured）' -f ($collectedInfo.Skipped -join '、')))
         }
         $lines.Add('')
-        $lines.Add('未验证连通性：本阶段不连接任何数据库。要确认账号可用，需要阶段 2 的执行器。')
+        $lines.Add('未验证连通性：本脚本只写文件、不连库。要确认账号可用，请运行 `-Mode Check -Target <路由 id>`。')
         $lines.Add('下一步：运行 `db-ops.ps1 -Mode Validate -Target <路由 id>` 查看各路由状态。')
 
         return [pscustomobject]@{ Code = $EXIT_OK; Lines = $lines.ToArray(); StderrLines = $stderrLines.ToArray() }

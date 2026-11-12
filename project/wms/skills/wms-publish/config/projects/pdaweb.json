@@ -7,6 +7,14 @@
       "hbuilderxCli": "D:/Tool/HBuilderX/cli.exe",
       "manifestPath": "manifest.json",
       "backendConfigFile": "config.js",
+      "backendConfigGuard": {
+        "enabled": true,
+        "allowedUrls": {
+          "production": [
+            "https://wms.hymson.com:39000/bpbg"
+          ]
+        }
+      },
       "outputDir": "unpackage/dist/build/web",
       "requiredEntries": ["index.html"]
     }

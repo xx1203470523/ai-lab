@@ -1,0 +1,1 @@
+{"key":"autopost-test","name":"测试环境_自动过账","command":"AutoPost/test_autopost.js","schedule":"23 0 * * * ?","enabled":true}

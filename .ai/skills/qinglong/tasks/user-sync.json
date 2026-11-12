@@ -1,0 +1,1 @@
+{"key":"user-sync","name":"用户增量同步","command":"wms/automationwarehouse/sync_user.js","schedule":"48 */5 * * * ?","enabled":true}

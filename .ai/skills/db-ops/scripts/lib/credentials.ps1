@@ -541,12 +541,10 @@ function New-CredentialsFileInteractive {
             continue
         }
 
-        # 高权限账号**默认拒绝，且不提供绕过开关**。理由不是「开发库可以随便用 root」，
-        # 而是这个技能会把连接信息写到一个固定的外置文件里，一旦养成用 root 的习惯，
-        # 那份文件迟早会被指向生产。宁可让使用者现在就去申请只读账号。
+        # 高权限账号只告警、不拒绝。只读查询的安全性由 SQL 守卫与「一次一条语句」保证；
+        # 写操作必须走 -Mode Exec 的确认摘要。拒绝 root 只会让开发库在第一步就不可用。
         if (-not [string]::IsNullOrWhiteSpace($highPrivilegePattern) -and ([string]$entry['DB_USER']) -match $highPrivilegePattern) {
-            $rejected += ('{0}：DB_USER 命中高权限模式（{1}），拒绝写入' -f $prefix, $highPrivilegePattern)
-            continue
+            Write-Host ('    注意：{0} 的账号命中高权限模式（{1}）。只读查询可用；写操作需 Exec 审核。' -f $prefix, $highPrivilegePattern) -ForegroundColor Yellow
         }
 
         foreach ($suffix in $suffixes) {

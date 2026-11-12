@@ -1,7 +1,7 @@
 # 只读查询流程
 
 适用：`-Mode Query`（短 SQL）与 `-Mode File`（长 SQL / SQL 文件）。
-阶段 1 的执行器未实现，因此本文件描述的是**流程契约**；阶段 1 能实际跑的是第 2 步（状态）与第 3 步（静态守卫）。
+只读查询**直接执行，不需要人工审核**；安全性由静态守卫、单语句限制、行数上限和数据库账号权限共同保证。
 
 ## 0 前置
 
@@ -21,7 +21,8 @@ powershell -NoProfile -File "$sk\db-ops.ps1" -Mode Validate -Target prod.lebg
 ```
 
 - 状态不是 `ready` → **停**，把 `依据`（`statusReason`）原样转述，并说明下一步需要什么（配凭据 / 人工确认据点与库的对应 / 该引擎没有执行器）。
-- `ready` 只表示配置与权限齐备，**不表示**已经连通过。真实连通的结论只能来自一次成功的查询。
+- `ready` 只表示配置与权限齐备，**不表示**已经连通过。需要验证真实连通性时跑 `-Mode Check`（执行 `SELECT DATABASE(), VERSION()`）。
+- 账号命中高权限模式（如 `root`）只会在状态依据里多一条告警，**不阻塞只读查询**。
 
 ## 3 备 SQL
 
@@ -36,7 +37,7 @@ powershell -NoProfile -File "$sk\db-ops.ps1" -Mode Validate -Target dev.lebgjm -
 
 守卫会报语句种类、语句条数、拒绝原因。**被拒绝就改 SQL，不要去改守卫。**
 
-## 4 执行（阶段 2）
+## 4 执行（直接跑，无需确认）
 
 ```powershell
 # 短 SQL

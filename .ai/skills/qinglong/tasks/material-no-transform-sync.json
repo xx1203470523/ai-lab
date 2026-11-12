@@ -1,0 +1,1 @@
+{"key":"material-no-transform-sync","name":"料号转换增量同步","command":"wms/automationwarehouse/sync_transformation_material.js","schedule":"8 */5 * * * ?","enabled":true}

@@ -95,7 +95,12 @@ function Resolve-DbsqlConfig {
         if (-not $EnvValues.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$EnvValues[$key])) { throw "Env key missing for target '$selectedEnvironment': $key" }
         $config[$required] = [string]$EnvValues[$key]
     }
-    if ([string]$config['DB_USER'] -match '(?i)^(root|admin|sa)$') { throw "Target '$selectedEnvironment' does not use a designated read-only account." }
+    # 高权限账号不再直接拒绝。dbsql 的每一次执行都必须通过 Test-ReadOnlySql 的守卫，
+    # 且只执行单条 SELECT/SHOW/DESC/EXPLAIN/WITH；用 root 读数据不会破坏任何东西。
+    # 反过来，把 root 硬拒会让「开发库用的就是 root」这类现实配置在第一步就不可用。
+    if ([string]$config['DB_USER'] -match '(?i)^(root|admin|sa)$') {
+        Write-Warning "Target '$selectedEnvironment' uses a high-privilege account. Read-only guard still applies; dbsql never executes write SQL."
+    }
     return $config
 }
 
