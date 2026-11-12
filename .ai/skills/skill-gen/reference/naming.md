@@ -2,18 +2,19 @@
 
 ## 工具型
 
-`<name>` — 简短动词/名词，无连字符
+`<name>` — 简短名词或动词短语；多词用 `-` 连接。
 
-- `git` — 版本控制
-- `task-plan` — 任务规划（多词用 `-` 连接）
-- `task-execute` — 任务执行
+- `git`
+- `task-plan`
+- `task-execute`
+- `skill-gen`
 
 ## 业务型
 
-`<business>-<module>` — 业务名 + 模块名
+`<business>-<module>` — 业务名 + 模块名。
 
 - `wms-backend-dev` — WMS 后端开发
-- `wms-pda` — WMS PDA 端
+- `wms-pda-dev` — WMS PDA 端
 - `wms-publish` — WMS 发布
 - `trade-watch` — 炒股监控
 
